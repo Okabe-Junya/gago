@@ -18,6 +18,7 @@ type GA struct {
 	CrossoverRate float64
 	MutationRate  float64
 	Generations   int
+	EnableLogger  bool
 	Logger        *logger.Logger
 }
 
@@ -34,6 +35,9 @@ func (ga *GA) Initialize(populationSize int, initializeGenotype func() *Genotype
 		genotype := initializeGenotype()
 		phenotype := evaluatePhenotype(genotype)
 		ga.Population[i] = &Individual{Genotype: genotype, Phenotype: phenotype}
+	}
+	if ga.EnableLogger {
+		ga.initializeLogger(true)
 	}
 }
 
@@ -53,6 +57,10 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) {
 			ind.Phenotype = evaluatePhenotype(ind.Genotype)
 		}
 	}
+}
+
+func (ga *GA) initializeLogger(enabled bool) {
+	ga.Logger = logger.NewLogger(enabled)
 }
 
 // log logs a message with a key-value pair if the logger is set.
