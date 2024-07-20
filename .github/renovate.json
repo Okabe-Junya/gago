@@ -1,0 +1,75 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": [
+        "config:base",
+        ":timezone(Asia/Tokyo)",
+        ":prHourlyLimitNone",
+        ":automergePatch",
+        ":automergeMinor"
+    ],
+    "schedule": [
+        "after 3am on monday",
+        "before 6am on monday"
+    ],
+    "dependencyDashboard": true,
+    "golang": {
+        "commitMessageAction": "Bump",
+        "commitMessageExtra": "to {{newValue}}",
+        "commitMessageTopic": "module {{depName}}",
+        "postUpdateOptions": [
+            "gomodTidy",
+            "gomodUpdateImportPaths"
+        ]
+    },
+    "packageRules": [
+        {
+            "matchUpdateTypes": [
+                "pin"
+            ],
+            "addLabels": [
+                "renovate:pin"
+            ]
+        },
+        {
+            "matchUpdateTypes": [
+                "major"
+            ],
+            "addLabels": [
+                "renovate:major"
+            ]
+        },
+        {
+            "matchUpdateTypes": [
+                "minor"
+            ],
+            "addLabels": [
+                "renovate:minor"
+            ]
+        },
+        {
+            "matchUpdateTypes": [
+                "patch"
+            ],
+            "addLabels": [
+                "renovate:patch"
+            ]
+        }
+    ],
+    "regexManagers": [
+        {
+            "fileMatch": [
+                ".*y[a]?ml$"
+            ],
+            "matchStrings": [
+                "go install (?<depName>[^@]+?)@(?<currentValue>.+)\n"
+            ],
+            "datasourceTemplate": "go"
+        }
+    ],
+    "vulnerabilityAlerts": {
+        "enabled": true,
+        "labels": [
+            "renovate:security-update"
+        ]
+    }
+}
