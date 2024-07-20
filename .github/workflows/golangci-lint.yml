@@ -1,0 +1,20 @@
+name: reviewdog / golangci-lint
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  golangci-lint:
+    name: lint / golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: golangci-lint
+        uses: reviewdog/action-golangci-lint@v2
