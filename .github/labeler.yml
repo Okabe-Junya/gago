@@ -31,6 +31,11 @@ area/internal:
       - any-glob-to-any-file:
           - "internal/**"
 
+area/examples:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "examples/**"
+
 kind/feature:
   - head-branch: ["^feat", "feat"]
 
