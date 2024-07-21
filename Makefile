@@ -7,7 +7,7 @@ unit-test:
 	@echo "Running tests..."
 	@go test ./...
 
-.PHONY: run-example
-run-example:
+.PHONY: run-examples
+run-examples:
 	@echo "Running example..."
 	@./scripts/run_examples.sh
