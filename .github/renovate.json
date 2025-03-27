@@ -1,27 +1,35 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": [
-        "config:base",
-        ":timezone(Asia/Tokyo)",
-        ":prHourlyLimitNone",
-        ":automergePatch",
-        ":automergeMinor"
-    ],
+    "timezone": "Asia/Tokyo",
     "schedule": [
-        "after 3am on monday",
-        "before 6am on monday"
+        "after 1am and before 6am on monday"
     ],
+    "automergeSchedule": [
+        "after 1am and before 6am on monday"
+    ],
+    "prHourlyLimit": 0,
     "dependencyDashboard": true,
-    "golang": {
-        "commitMessageAction": "Bump",
-        "commitMessageExtra": "to {{newValue}}",
-        "commitMessageTopic": "module {{depName}}",
-        "postUpdateOptions": [
-            "gomodTidy",
-            "gomodUpdateImportPaths"
-        ]
-    },
+    "autoApprove": true,
+    "updateNotScheduled": false,
     "packageRules": [
+        {
+            "matchPackageNames": [
+                "*"
+            ],
+            "rangeStrategy": "replace"
+        },
+        {
+            "matchCategories": [
+                "golang"
+            ],
+            "commitMessageAction": "Bump",
+            "commitMessageExtra": "to {{newValue}}",
+            "commitMessageTopic": "module {{depName}}",
+            "postUpdateOptions": [
+                "gomodTidy",
+                "gomodUpdateImportPaths"
+            ]
+        },
         {
             "matchUpdateTypes": [
                 "pin"
@@ -36,7 +44,8 @@
             ],
             "addLabels": [
                 "renovate:major"
-            ]
+            ],
+            "minimumReleaseAge": "7 days"
         },
         {
             "matchUpdateTypes": [
@@ -44,7 +53,8 @@
             ],
             "addLabels": [
                 "renovate:minor"
-            ]
+            ],
+            "minimumReleaseAge": "5 days"
         },
         {
             "matchUpdateTypes": [
@@ -52,11 +62,42 @@
             ],
             "addLabels": [
                 "renovate:patch"
+            ],
+            "minimumReleaseAge": "3 days",
+            "automerge": true
+        },
+        {
+            "matchDepTypes": [
+                "action"
+            ],
+            "pinDigests": true
+        },
+        {
+            "groupName": "Go version",
+            "matchDatasources": [
+                "golang-version"
+            ]
+        },
+        {
+            "groupName": "Go version",
+            "matchManagers": [
+                "dockerfile"
+            ],
+            "matchPackageNames": [
+                "golang"
+            ]
+        },
+        {
+            "groupName": "golang.org/x/...",
+            "automerge": true,
+            "matchPackageNames": [
+                "/^golang.org/x//"
             ]
         }
     ],
-    "regexManagers": [
+    "customManagers": [
         {
+            "customType": "regex",
             "fileMatch": [
                 ".*y[a]?ml$"
             ],

@@ -1,0 +1,38 @@
+run:
+  timeout: "20m"
+  allow-parallel-runners: true
+  go: "1.23"
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - errcheck
+    - gocritic
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - noctx
+    - staticcheck
+    - unused
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+  staticcheck:
+    checks: ["-SA1006"]
+
+issues:
+  exclude-use-default: true
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - noctx
+        - govet
+
+output:
+  print-linter-name: true

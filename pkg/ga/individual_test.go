@@ -2,7 +2,7 @@ package ga
 
 import "testing"
 
-func TestNewGenotype(t *testing.T) {
+func TestNewBinaryGenotype(t *testing.T) {
 	cases := []struct {
 		genomeLength   int
 		expectedLength int
@@ -12,7 +12,7 @@ func TestNewGenotype(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		genotype := NewGenotype(tc.genomeLength)
+		genotype := NewBinaryGenotype(tc.genomeLength)
 
 		if len(genotype.Genome) != tc.expectedLength {
 			t.Fatalf("Expected genome length %d, but got %d", tc.expectedLength, len(genotype.Genome))

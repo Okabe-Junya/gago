@@ -1,5 +1,5 @@
-// Package ga provides functionalities for implementing genetic algorithms.
-package ga
+// Package population provides types and operations for managing individuals and populations in genetic algorithms.
+package population
 
 import (
 	"math"
@@ -26,11 +26,9 @@ func NewPopulation(size int, initFunc func() *Individual) *Population {
 		Individuals: make([]*Individual, size),
 		Statistics:  &Statistics{},
 	}
-
 	for i := 0; i < size; i++ {
 		pop.Individuals[i] = initFunc()
 	}
-
 	return pop
 }
 
@@ -39,11 +37,9 @@ func (p *Population) CalculateStatistics() {
 	if len(p.Individuals) == 0 {
 		return
 	}
-
 	bestFitness := p.Individuals[0].Phenotype.Fitness
 	worstFitness := p.Individuals[0].Phenotype.Fitness
 	totalFitness := 0.0
-
 	for _, ind := range p.Individuals {
 		fitness := ind.Phenotype.Fitness
 		if fitness > bestFitness {
@@ -54,7 +50,6 @@ func (p *Population) CalculateStatistics() {
 		}
 		totalFitness += fitness
 	}
-
 	averageFitness := totalFitness / float64(len(p.Individuals))
 
 	// Calculate genetic diversity as standard deviation of fitness values
@@ -82,17 +77,7 @@ func (p *Population) SortByFitness() {
 
 // GetBestIndividual returns the individual with the highest fitness.
 func (p *Population) GetBestIndividual() *Individual {
-	if len(p.Individuals) == 0 {
-		return nil
-	}
-
-	best := p.Individuals[0]
-	for _, ind := range p.Individuals {
-		if ind.Phenotype.Fitness > best.Phenotype.Fitness {
-			best = ind
-		}
-	}
-	return best
+	return FindBestIndividual(p.Individuals)
 }
 
 // GetWorstIndividual returns the individual with the lowest fitness.
@@ -100,7 +85,6 @@ func (p *Population) GetWorstIndividual() *Individual {
 	if len(p.Individuals) == 0 {
 		return nil
 	}
-
 	worst := p.Individuals[0]
 	for _, ind := range p.Individuals {
 		if ind.Phenotype.Fitness < worst.Phenotype.Fitness {
