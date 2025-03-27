@@ -92,13 +92,21 @@ func TestFitnessThresholdTermination(t *testing.T) {
 }
 
 func TestTimeBasedTermination(t *testing.T) {
+	// Using a test interface that doesn't depend on actual time
+	// We use mockTimeNow to control time within the test
+	originalTimeFunc := timeNow
+	defer func() { timeNow = originalTimeFunc }() // Restore original function after test
+
+	mockTime := time.Now()
+	timeNow = func() time.Time { return mockTime }
+
 	// Set a short duration for testing
 	duration := 100 * time.Millisecond
 	termCondition := TimeBasedTermination(duration)
 
 	// Setup mock GA instance with start time
 	ga := &GA{
-		StartTime: time.Now(),
+		StartTime: mockTime,
 	}
 
 	// Test before duration has elapsed
@@ -106,11 +114,11 @@ func TestTimeBasedTermination(t *testing.T) {
 		t.Error("Termination condition returned true immediately, expected false")
 	}
 
-	// Sleep to allow duration to elapse
-	time.Sleep(duration + 10*time.Millisecond)
+	// Advance time (without sleep)
+	mockTime = mockTime.Add(duration + 10*time.Millisecond)
 
 	// Test after duration has elapsed
 	if !termCondition.Evaluate(ga) {
-		t.Error("Termination condition returned false after sleeping, expected true")
+		t.Error("Termination condition returned false after time advance, expected true")
 	}
 }

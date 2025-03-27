@@ -12,17 +12,17 @@ func TestBitFlipMutation(t *testing.T) {
 	}{
 		{
 			population: []*Individual{
-				{Genotype: &Genotype{Genome: []byte{1, 1, 1, 1}}},
-				{Genotype: &Genotype{Genome: []byte{0, 0, 0, 0}}},
+				{Genotype: &Genotype{Genome: []byte{1, 1, 1, 1, 1, 1, 1, 1}}},
+				{Genotype: &Genotype{Genome: []byte{0, 0, 0, 0, 0, 0, 0, 0}}},
 			},
-			mutationRate: 1.0, // Ensures all bits will be flipped
+			mutationRate: 1.0, // All bits should be flipped
 		},
 		{
 			population: []*Individual{
 				{Genotype: &Genotype{Genome: []byte{1, 1, 1, 1}}},
 				{Genotype: &Genotype{Genome: []byte{0, 0, 0, 0}}},
 			},
-			mutationRate: 0.0, // Ensures no bits will be flipped
+			mutationRate: 0.0, // No bits should be flipped
 		},
 	}
 
@@ -41,10 +41,14 @@ func TestBitFlipMutation(t *testing.T) {
 
 		if tc.mutationRate == 1.0 {
 			for i, ind := range tc.population {
+				anyUnflippedBit := false
 				for j, gene := range ind.Genotype.Genome {
 					if gene == original[i].Genotype.Genome[j] {
-						t.Errorf("Expected gene at position %d in individual %d to be flipped, but it was not", j, i)
+						anyUnflippedBit = true
 					}
+				}
+				if anyUnflippedBit {
+					t.Errorf("Expected all bits to be flipped with mutation rate 1.0, but some bits remained unchanged in individual %d", i)
 				}
 			}
 		} else if tc.mutationRate == 0.0 {
@@ -91,7 +95,7 @@ func TestSwapMutation(t *testing.T) {
 
 		anyMutationOccurred := false
 		for attempt := 0; attempt < 10; attempt++ {
-			// 元のゲノムに戻す
+			// Reset genomes to original state
 			for i, ind := range tc.population {
 				ind.Genotype.Genome = append([]byte(nil), original[i].Genotype.Genome...)
 			}
@@ -99,7 +103,7 @@ func TestSwapMutation(t *testing.T) {
 			SwapMutation(tc.population, tc.mutationRate)
 
 			if tc.mutationRate > 0.0 {
-				// 少なくとも1つの個体で変異が起きたかチェック
+				// Check if mutation occurred in at least one individual
 				for i, ind := range tc.population {
 					if !reflect.DeepEqual(ind.Genotype.Genome, original[i].Genotype.Genome) {
 						anyMutationOccurred = true
