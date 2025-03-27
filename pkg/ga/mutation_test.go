@@ -89,8 +89,6 @@ func TestSwapMutation(t *testing.T) {
 			}
 		}
 
-		// 同じ乱数シードで何度も実行すると同じ結果になるため、
-		// テスト実行ごとに結果が変わるように複数回試行する
 		anyMutationOccurred := false
 		for attempt := 0; attempt < 10; attempt++ {
 			// 元のゲノムに戻す
