@@ -48,6 +48,9 @@ type GA struct {
 	LogJSON          bool
 }
 
+// Function variable for time operations, allows for test mocking
+var timeNow = time.Now
+
 // Initialize initializes the population with the specified size and configuration.
 // It creates and evaluates the initial population using the provided functions.
 //
@@ -131,7 +134,8 @@ func (ga *GA) Initialize(populationSize int, initializeGenotype func() *Genotype
 		ga.initializeLogger()
 	}
 
-	ga.StartTime = time.Now()
+	// Initialize runtime tracking
+	ga.StartTime = timeNow()
 	return nil
 }
 
@@ -154,7 +158,8 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 		return nil, fmt.Errorf("evaluatePhenotype function cannot be nil")
 	}
 
-	ga.StartTime = time.Now()
+	// Reset start time for this evolution
+	ga.StartTime = timeNow()
 	bestIndividual := ga.Population.GetBestIndividual()
 	if bestIndividual == nil {
 		return nil, fmt.Errorf("initial population contains no valid individuals")
@@ -453,21 +458,21 @@ func (ga *GA) cloneIndividual(ind *Individual) *Individual {
 	genomeClone := make([]byte, len(ind.Genotype.Genome))
 	copy(genomeClone, ind.Genotype.Genome)
 
-	// クローンMinValues（もし存在すれば）
+	// Clone MinValues if they exist
 	var minValuesClone []float64
 	if len(ind.Genotype.MinValues) > 0 {
 		minValuesClone = make([]float64, len(ind.Genotype.MinValues))
 		copy(minValuesClone, ind.Genotype.MinValues)
 	}
 
-	// クローンMaxValues（もし存在すれば）
+	// Clone MaxValues if they exist
 	var maxValuesClone []float64
 	if len(ind.Genotype.MaxValues) > 0 {
 		maxValuesClone = make([]float64, len(ind.Genotype.MaxValues))
 		copy(maxValuesClone, ind.Genotype.MaxValues)
 	}
 
-	// クローンFeatures
+	// Clone Features
 	var featuresClone []float64
 	if ind.Phenotype != nil && len(ind.Phenotype.Features) > 0 {
 		featuresClone = make([]float64, len(ind.Phenotype.Features))
@@ -553,7 +558,7 @@ func ConvergenceTermination(noImprovementGens int, improvementThreshold float64)
 // TimeBasedTermination returns a termination condition that terminates after a specified duration.
 func TimeBasedTermination(duration time.Duration) TerminationCondition {
 	return TerminationConditionFunc(func(ga *GA) bool {
-		return time.Since(ga.StartTime) >= duration
+		return timeNow().Sub(ga.StartTime) >= duration
 	})
 }
 
