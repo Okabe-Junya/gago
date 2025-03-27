@@ -93,8 +93,6 @@ func TestSwapMutation(t *testing.T) {
 			}
 		}
 
-		// Since the same random seed would produce the same results,
-		// we try multiple attempts to ensure the test is deterministic
 		anyMutationOccurred := false
 		for attempt := 0; attempt < 10; attempt++ {
 			// Reset genomes to original state
