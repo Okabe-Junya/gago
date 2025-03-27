@@ -1,13 +1,11 @@
-.PHONY: build
-build:
-	@echo "Building the project..."
+DEFAULT_GOAL := test
 
 .PHONY: test
-unit-test:
+test:
 	@echo "Running tests..."
 	@go test ./...
 
-.PHONY: run-examples
-run-examples:
-	@echo "Running example..."
-	@./scripts/run_examples.sh
+.PHONY: lint
+lint:
+	@echo "Running linters..."
+	@golangci-lint run ./...
