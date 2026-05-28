@@ -25,9 +25,12 @@ GAGO is a comprehensive Go library for implementing genetic algorithms. The libr
 
 - Crossover operations:
   - Single-point crossover
+  - Two-point crossover
   - Multi-point crossover
   - Uniform crossover
-  - Order-based crossover (for permutations)
+  - Order-based crossover (OX1) for permutations
+  - Partially-mapped crossover (PMX) for permutations
+  - Cycle crossover (CX) for permutations
 
 - Mutation operations:
   - Bit-flip mutation
@@ -43,8 +46,12 @@ GAGO is a comprehensive Go library for implementing genetic algorithms. The libr
   - Convergence threshold
   - Time-based
   - Fitness threshold
+  - Unified `EarlyStopping` config (patience, target fitness, wall-clock time)
 
 - Additional features:
+  - Reproducible runs via `GA.Seed` and a per-instance `*rand.Rand`
+  - Per-generation `OnGeneration` callback
+  - `Result` return value with `StopReason` and `StoppedAtGeneration`
   - Elitism
   - Parallel fitness evaluation
   - Adaptive parameter control
@@ -66,30 +73,34 @@ Here's a simple example of using GAGO to solve a maximization problem:
 func main() {
     // Configure the genetic algorithm
     gaInstance := &ga.GA{
-        Selection:     func(population []*ga.Individual) []*ga.Individual {
-            return ga.TournamentSelection(population, 3)
+        Selection: func(population []*ga.Individual, rng *rand.Rand) []*ga.Individual {
+            return ga.TournamentSelection(population, 3, rng)
         },
         Crossover:     ga.SinglePointCrossover,
         Mutation:      ga.BitFlipMutation,
         CrossoverRate: 0.7,
         MutationRate:  0.01,
         Generations:   100,
+        Seed:          42, // optional; non-zero seeds make runs reproducible
+        EarlyStopping: &ga.EarlyStopping{TargetFitness: targetFitness, TargetFitnessSet: true},
         EnableLogger:  true,
         LogLevel:      logger.LevelInfo,
     }
 
     // Initialize the population
-    gaInstance.Initialize(50, initializeGenotype, evaluatePhenotype)
-
-    // Set termination condition
-    gaInstance.TermCondition = ga.FitnessThresholdTermination(targetFitness)
+    if err := gaInstance.Initialize(50, initializeGenotype, evaluatePhenotype); err != nil {
+        log.Fatal(err)
+    }
 
     // Run the evolution
-    bestIndividual := gaInstance.Evolve(evaluatePhenotype)
+    result, err := gaInstance.Evolve(evaluatePhenotype)
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Get results
-    fmt.Printf("Best fitness: %f\n", bestIndividual.Phenotype.Fitness)
-    fmt.Printf("Total generations: %d\n", len(gaInstance.History)-1)
+    fmt.Printf("Best fitness: %f\n", result.Best.Phenotype.Fitness)
+    fmt.Printf("Stop reason: %s at generation %d\n", result.StopReason, result.StoppedAtGeneration)
     fmt.Printf("Total runtime: %v\n", gaInstance.GetRuntime())
 }
 ```
@@ -102,9 +113,11 @@ func main() {
   - `population/`: Population and individual management
 - `internal/logger`: Logging functionality
 - `examples/`: Example implementations
-  - `find_max/`: Simple function maximization
-  - `tsp/`: Traveling Salesman Problem solver
-  - More examples to come
+  - `find_max/`: simple 1D function maximization (binary encoding)
+  - `onemax/`: maximize the number of 1s in a binary chromosome
+  - `knapsack/`: 0/1 knapsack with a penalty term for capacity violations
+  - `tsp/`: Travelling Salesman with `OrderBasedCrossover` + `SwapMutation`
+  - `rastrigin/`: 2D Rastrigin function minimization with `GaussianMutation`
 
 ## Error Handling
 
