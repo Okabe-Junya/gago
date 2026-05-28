@@ -19,13 +19,13 @@ import (
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func SinglePointCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func SinglePointCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
-			point := rand.Intn(len(parent1.Genome))
+			point := rng.Intn(len(parent1.Genome))
 			child1 := &Genotype{Genome: make([]byte, len(parent1.Genome))}
 			child2 := &Genotype{Genome: make([]byte, len(parent1.Genome))}
 			copy(child1.Genome[:point], parent1.Genome[:point])
@@ -54,16 +54,16 @@ func SinglePointCrossover(population []*Individual, crossoverRate float64) []*In
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func UniformCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func UniformCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			child1 := &Genotype{Genome: make([]byte, len(parent1.Genome))}
 			child2 := &Genotype{Genome: make([]byte, len(parent1.Genome))}
 			for j := range parent1.Genome {
-				if rand.Float64() < 0.5 {
+				if rng.Float64() < 0.5 {
 					child1.Genome[j] = parent1.Genome[j]
 					child2.Genome[j] = parent2.Genome[j]
 				} else {
@@ -95,10 +95,10 @@ func UniformCrossover(population []*Individual, crossoverRate float64) []*Indivi
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoints int) []*Individual {
+func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoints int, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 
@@ -110,7 +110,7 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 
 			points := make([]int, numPoints)
 			for j := 0; j < numPoints; j++ {
-				points[j] = rand.Intn(genomeLength)
+				points[j] = rng.Intn(genomeLength)
 			}
 			sort.Ints(points)
 
@@ -167,10 +167,10 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func TwoPointCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func TwoPointCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			genomeLength := len(parent1.Genome)
@@ -180,8 +180,8 @@ func TwoPointCrossover(population []*Individual, crossoverRate float64) []*Indiv
 				offspring[2*i+1] = population[2*i+1]
 				continue
 			}
-			a := rand.Intn(genomeLength - 1)
-			b := a + 1 + rand.Intn(genomeLength-1-a)
+			a := rng.Intn(genomeLength - 1)
+			b := a + 1 + rng.Intn(genomeLength-1-a)
 
 			child1 := &Genotype{Genome: make([]byte, genomeLength), GenomeType: parent1.GenomeType}
 			child2 := &Genotype{Genome: make([]byte, genomeLength), GenomeType: parent2.GenomeType}
@@ -216,11 +216,11 @@ func TwoPointCrossover(population []*Individual, crossoverRate float64) []*Indiv
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func OrderBasedCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func OrderBasedCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			genomeLength := len(parent1.Genome)
@@ -230,8 +230,8 @@ func OrderBasedCrossover(population []*Individual, crossoverRate float64) []*Ind
 				continue
 			}
 
-			a := rand.Intn(genomeLength)
-			b := rand.Intn(genomeLength)
+			a := rng.Intn(genomeLength)
+			b := rng.Intn(genomeLength)
 			if a > b {
 				a, b = b, a
 			}
@@ -297,11 +297,11 @@ func orderCrossoverChild(p1, p2 []byte, start, end int) []byte {
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func PMXCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func PMXCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			n := len(parent1.Genome)
@@ -311,8 +311,8 @@ func PMXCrossover(population []*Individual, crossoverRate float64) []*Individual
 				continue
 			}
 
-			a := rand.Intn(n)
-			b := rand.Intn(n)
+			a := rng.Intn(n)
+			b := rng.Intn(n)
 			if a > b {
 				a, b = b, a
 			}
@@ -376,11 +376,11 @@ func pmxChild(p1, p2 []byte, a, b int) []byte {
 //
 // Returns:
 // - A new population of offspring generated from the input population.
-func CycleCrossover(population []*Individual, crossoverRate float64) []*Individual {
+func CycleCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
 	for i := 0; i < len(population)/2; i++ {
-		if rand.Float64() < crossoverRate {
+		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			n := len(parent1.Genome)

@@ -9,7 +9,7 @@ import (
 
 // TournamentSelection implements tournament selection for selecting individuals.
 // It randomly selects tournamentSize individuals and returns the best one.
-func TournamentSelection(population []*Individual, tournamentSize int) []*Individual {
+func TournamentSelection(population []*Individual, tournamentSize int, rng *rand.Rand) []*Individual {
 	if len(population) == 0 {
 		return nil
 	}
@@ -19,7 +19,7 @@ func TournamentSelection(population []*Individual, tournamentSize int) []*Indivi
 		// Select tournamentSize random individuals
 		tournament := make([]*Individual, tournamentSize)
 		for j := range tournament {
-			tournament[j] = population[rand.Intn(len(population))]
+			tournament[j] = population[rng.Intn(len(population))]
 		}
 
 		// Find the best individual in the tournament
@@ -38,7 +38,7 @@ func TournamentSelection(population []*Individual, tournamentSize int) []*Indivi
 
 // RouletteWheelSelection implements roulette wheel selection for selecting individuals.
 // The probability of selection is proportional to the individual's fitness.
-func RouletteWheelSelection(population []*Individual) []*Individual {
+func RouletteWheelSelection(population []*Individual, rng *rand.Rand) []*Individual {
 	if len(population) == 0 {
 		return nil
 	}
@@ -59,7 +59,7 @@ func RouletteWheelSelection(population []*Individual) []*Individual {
 	// Select individuals using roulette wheel
 	selected := make([]*Individual, len(population))
 	for i := range selected {
-		r := rand.Float64()
+		r := rng.Float64()
 		for j, cumFitness := range cumulativeFitness {
 			if r <= cumFitness {
 				selected[i] = population[j]
@@ -73,7 +73,7 @@ func RouletteWheelSelection(population []*Individual) []*Individual {
 
 // RankSelection performs rank selection on the given population.
 // The probability of selection is proportional to the individual's rank rather than its fitness.
-func RankSelection(population []*Individual) []*Individual {
+func RankSelection(population []*Individual, rng *rand.Rand) []*Individual {
 	if len(population) == 0 {
 		return nil
 	}
@@ -110,7 +110,7 @@ func RankSelection(population []*Individual) []*Individual {
 	// Select individuals based on rank probabilities
 	selected := make([]*Individual, len(population))
 	for i := range selected {
-		r := rand.Float64()
+		r := rng.Float64()
 		for j, prob := range probabilities {
 			if r <= prob {
 				selected[i] = sorted[j]
@@ -132,7 +132,7 @@ func RankSelection(population []*Individual) []*Individual {
 //
 // Returns:
 // - A new population of selected individuals.
-func StochasticUniversalSamplingSelection(population []*Individual) []*Individual {
+func StochasticUniversalSamplingSelection(population []*Individual, rng *rand.Rand) []*Individual {
 	n := len(population)
 	selected := make([]*Individual, n)
 	totalFitness := 0.0
@@ -145,7 +145,7 @@ func StochasticUniversalSamplingSelection(population []*Individual) []*Individua
 	distance := totalFitness / float64(n)
 
 	// Choose a random starting point
-	start := rand.Float64() * distance
+	start := rng.Float64() * distance
 
 	// Select individuals
 	for i := range selected {
@@ -216,7 +216,7 @@ func TruncationSelection(population []*Individual, truncationThreshold float64) 
 //
 // Returns:
 // - A new population of selected individuals.
-func BoltzmannSelection(population []*Individual, temperature float64) []*Individual {
+func BoltzmannSelection(population []*Individual, temperature float64, rng *rand.Rand) []*Individual {
 	n := len(population)
 	selected := make([]*Individual, n)
 
@@ -232,7 +232,7 @@ func BoltzmannSelection(population []*Individual, temperature float64) []*Indivi
 
 	// Perform selection based on Boltzmann probabilities
 	for i := range selected {
-		pick := rand.Float64() * totalBoltzmann
+		pick := rng.Float64() * totalBoltzmann
 		current := 0.0
 
 		for j, ind := range population {

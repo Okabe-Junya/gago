@@ -1,11 +1,13 @@
 package ga
 
 import (
+	"math/rand"
 	"reflect"
 	"testing"
 )
 
 func TestBitFlipMutation(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
 	cases := []struct {
 		population   []*Individual
 		mutationRate float64
@@ -37,7 +39,7 @@ func TestBitFlipMutation(t *testing.T) {
 			}
 		}
 
-		BitFlipMutation(tc.population, tc.mutationRate)
+		BitFlipMutation(tc.population, tc.mutationRate, rng)
 
 		if tc.mutationRate == 1.0 {
 			for i, ind := range tc.population {
@@ -62,6 +64,7 @@ func TestBitFlipMutation(t *testing.T) {
 }
 
 func TestSwapMutation(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
 	cases := []struct {
 		population   []*Individual
 		mutationRate float64
@@ -100,7 +103,7 @@ func TestSwapMutation(t *testing.T) {
 				ind.Genotype.Genome = append([]byte(nil), original[i].Genotype.Genome...)
 			}
 
-			SwapMutation(tc.population, tc.mutationRate)
+			SwapMutation(tc.population, tc.mutationRate, rng)
 
 			if tc.mutationRate > 0.0 {
 				// Check if mutation occurred in at least one individual

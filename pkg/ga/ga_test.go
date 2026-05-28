@@ -1,13 +1,16 @@
 package ga
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 )
 
 func TestInitialize(t *testing.T) {
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -19,7 +22,7 @@ func TestInitialize(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -58,7 +61,9 @@ func TestInitialize(t *testing.T) {
 
 func TestEvolve(t *testing.T) {
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -70,7 +75,7 @@ func TestEvolve(t *testing.T) {
 	populationSize := 10
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -106,10 +111,12 @@ func TestEvolve(t *testing.T) {
 			t.Fatal("Best individual is nil after evolution")
 		}
 
-		// Best individual's fitness should match the best in the population
+		// Evolve returns the all-time best individual seen across all generations,
+		// which may be fitter than the final population's best (it might not
+		// have survived selection). The invariant is: all-time best >= current best.
 		popBest := gaInstance.Population.GetBestIndividual()
-		if got, want := bestIndividual.Phenotype.Fitness, popBest.Phenotype.Fitness; got != want {
-			t.Errorf("Best individual fitness got %f, want %f", got, want)
+		if got, floor := bestIndividual.Phenotype.Fitness, popBest.Phenotype.Fitness; got < floor {
+			t.Errorf("Best individual fitness got %f, want >= %f (current population best)", got, floor)
 		}
 	})
 
@@ -129,7 +136,9 @@ func TestEvolve(t *testing.T) {
 func TestElitism(t *testing.T) {
 	// Create a GA with elitism
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -142,7 +151,7 @@ func TestElitism(t *testing.T) {
 	populationSize := 10
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		genotype := NewBinaryGenotype(genomeLength)
 		// Initialize with all zeros
 		for i := range genotype.Genome {
@@ -228,7 +237,9 @@ func TestParallelEvaluation(t *testing.T) {
 
 	// Create a GA with parallel evaluation
 	gaInstance := &GA{
-		Selection:        func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:        SinglePointCrossover,
 		Mutation:         BitFlipMutation,
 		CrossoverRate:    0.7,
@@ -243,7 +254,7 @@ func TestParallelEvaluation(t *testing.T) {
 	populationSize := 100
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -301,7 +312,9 @@ func TestParallelEvaluation(t *testing.T) {
 
 func TestErrorHandling(t *testing.T) {
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -311,7 +324,7 @@ func TestErrorHandling(t *testing.T) {
 	}
 
 	// Test invalid population size
-	err := gaInstance.Initialize(0, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err := gaInstance.Initialize(0, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err == nil {
 		t.Error("Expected error for invalid population size")
 	}
@@ -323,28 +336,30 @@ func TestErrorHandling(t *testing.T) {
 	}
 
 	// Test nil evaluation function
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, nil)
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, nil)
 	if err == nil {
 		t.Error("Expected error for nil evaluation function")
 	}
 
 	// Test nil genetic operators
 	gaInstance.Selection = nil
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err == nil {
 		t.Error("Expected error for nil selection operator")
 	}
 
-	gaInstance.Selection = func(population []*Individual) []*Individual { return TournamentSelection(population, 3) }
+	gaInstance.Selection = func(population []*Individual, rng *rand.Rand) []*Individual {
+		return TournamentSelection(population, 3, rng)
+	}
 	gaInstance.Crossover = nil
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err == nil {
 		t.Error("Expected error for nil crossover operator")
 	}
 
 	gaInstance.Crossover = SinglePointCrossover
 	gaInstance.Mutation = nil
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err == nil {
 		t.Error("Expected error for nil mutation operator")
 	}
@@ -352,7 +367,9 @@ func TestErrorHandling(t *testing.T) {
 
 func TestAdaptiveParameters(t *testing.T) {
 	gaInstance := &GA{
-		Selection:      func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:      SinglePointCrossover,
 		Mutation:       BitFlipMutation,
 		CrossoverRate:  0.7,
@@ -365,7 +382,7 @@ func TestAdaptiveParameters(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -414,7 +431,9 @@ func TestAdaptiveParameters(t *testing.T) {
 
 func TestTerminationConditions(t *testing.T) {
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -426,7 +445,7 @@ func TestTerminationConditions(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func() *Genotype {
+	initFunc := func(rng *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -478,7 +497,9 @@ func TestTerminationConditions(t *testing.T) {
 
 func TestEdgeCases(t *testing.T) {
 	gaInstance := &GA{
-		Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(population, 3, rng)
+		},
 		Crossover:     SinglePointCrossover,
 		Mutation:      BitFlipMutation,
 		CrossoverRate: 0.7,
@@ -488,14 +509,14 @@ func TestEdgeCases(t *testing.T) {
 	}
 
 	// Test with minimum population size
-	err := gaInstance.Initialize(1, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err := gaInstance.Initialize(1, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err != nil {
 		t.Errorf("Should accept population size of 1: %v", err)
 	}
 
 	// Test with maximum elitism count
 	gaInstance.ElitismCount = 100
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err != nil {
 		t.Errorf("Should handle large elitism count: %v", err)
 	}
@@ -506,7 +527,7 @@ func TestEdgeCases(t *testing.T) {
 	// Test with extreme mutation and crossover rates
 	gaInstance.MutationRate = 2.0
 	gaInstance.CrossoverRate = -1.0
-	err = gaInstance.Initialize(10, func() *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
 	if err != nil {
 		t.Errorf("Should handle extreme rates: %v", err)
 	}
@@ -515,5 +536,74 @@ func TestEdgeCases(t *testing.T) {
 	}
 	if gaInstance.CrossoverRate != 0.8 {
 		t.Errorf("Crossover rate should be reset to default, got %f", gaInstance.CrossoverRate)
+	}
+}
+
+// TestReproducibilityWithSeed verifies that two GA runs with the same Seed
+// produce bit-for-bit identical results. This is the headline property of
+// the seeded-RNG refactor.
+func TestReproducibilityWithSeed(t *testing.T) {
+	run := func(seed int64) *Individual {
+		gaInstance := &GA{
+			Selection: func(p []*Individual, rng *rand.Rand) []*Individual {
+				return TournamentSelection(p, 3, rng)
+			},
+			Crossover:     SinglePointCrossover,
+			Mutation:      BitFlipMutation,
+			CrossoverRate: 0.7,
+			MutationRate:  0.05,
+			Generations:   30,
+			Seed:          seed,
+			EnableLogger:  false,
+		}
+		initFunc := func(rng *rand.Rand) *Genotype {
+			g := NewBinaryGenotype(16)
+			for i := range g.Genome {
+				g.Genome[i] = byte(rng.Intn(2))
+			}
+			return g
+		}
+		evalFunc := func(g *Genotype) *Phenotype {
+			f := 0.0
+			for _, b := range g.Genome {
+				if b == 1 {
+					f++
+				}
+			}
+			return &Phenotype{Fitness: f}
+		}
+		if err := gaInstance.Initialize(20, initFunc, evalFunc); err != nil {
+			t.Fatalf("Initialize failed: %v", err)
+		}
+		best, err := gaInstance.Evolve(evalFunc)
+		if err != nil {
+			t.Fatalf("Evolve failed: %v", err)
+		}
+		return best
+	}
+
+	a := run(42)
+	b := run(42)
+	if a.Phenotype.Fitness != b.Phenotype.Fitness {
+		t.Errorf("Same seed produced different fitnesses: %f vs %f", a.Phenotype.Fitness, b.Phenotype.Fitness)
+	}
+	for i, g := range a.Genotype.Genome {
+		if g != b.Genotype.Genome[i] {
+			t.Errorf("Same seed produced different genomes at index %d: %d vs %d", i, g, b.Genotype.Genome[i])
+		}
+	}
+
+	// Different seeds should (almost always) diverge.
+	c := run(7)
+	sameFitness := a.Phenotype.Fitness == c.Phenotype.Fitness
+	sameGenome := true
+	for i, g := range a.Genotype.Genome {
+		if g != c.Genotype.Genome[i] {
+			sameGenome = false
+			break
+		}
+	}
+	if sameFitness && sameGenome {
+		t.Errorf("Different seeds happened to produce identical results — possible (but very unlikely); review if this fires repeatedly")
 	}
 }
