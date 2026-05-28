@@ -296,7 +296,10 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Result, err
 			tol = ga.EarlyStopping.Tol
 		}
 		if currentBest.Phenotype.Fitness > bestFitness+tol {
-			bestIndividual = currentBest
+			// Clone so the all-time best is immune to in-place mutation if
+			// this pointer survives into the next generation as a parent and
+			// gets mutated by the mutation operator (crossover skips alias).
+			bestIndividual = ga.cloneIndividual(currentBest)
 			bestFitness = currentBest.Phenotype.Fitness
 			noImprovementCount = 0
 		} else {

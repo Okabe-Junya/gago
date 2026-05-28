@@ -27,11 +27,13 @@ const (
 // (not necessarily the best in the final generation).
 // StoppedAtGeneration is the index of the last generation that ran; 0 means
 // only the initial population was evaluated.
+//
+// Field order is governed by govet fieldalignment, not API friendliness.
 type Result struct {
+	StopReason          StopReason
 	Best                *Individual
 	Population          *Population
 	History             []*Statistics
-	StopReason          StopReason
 	StoppedAtGeneration int
 }
 

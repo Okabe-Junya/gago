@@ -606,18 +606,64 @@ func TestReproducibilityWithSeed(t *testing.T) {
 		}
 	}
 
-	// Different seeds should (almost always) diverge.
-	c := run(7)
-	sameFitness := a.Phenotype.Fitness == c.Phenotype.Fitness
-	sameGenome := true
-	for i, g := range a.Genotype.Genome {
-		if g != c.Genotype.Genome[i] {
-			sameGenome = false
-			break
-		}
+	// Note: we deliberately do not assert that different seeds diverge.
+	// On a small OneMax problem both runs may legitimately reach the all-1s
+	// optimum, in which case the all-time best is identical regardless of
+	// seed — that is correct behavior, not a bug.
+}
+
+// TestResultBestNotAliasedToPopulation is a regression test for an aliasing
+// bug: bestIndividual stored a pointer into the live population, and when
+// crossover skipped a pair the offspring aliased the parent — which the
+// mutation operator then mutated in place, silently corrupting the all-time
+// best. The fix clones the best on capture.
+func TestResultBestNotAliasedToPopulation(t *testing.T) {
+	gaInstance := &GA{
+		Selection: func(p []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(p, 3, rng)
+		},
+		Crossover:     SinglePointCrossover,
+		Mutation:      BitFlipMutation,
+		CrossoverRate: 0.5, // ~50% chance crossover is skipped → offspring aliases parent.
+		MutationRate:  0.5, // high mutation rate → in-place flips are likely.
+		Generations:   50,
+		Seed:          1,
 	}
-	if sameFitness && sameGenome {
-		t.Errorf("Different seeds happened to produce identical results — possible (but very unlikely); review if this fires repeatedly")
+	initFunc := func(rng *rand.Rand) *Genotype {
+		g := NewBinaryGenotype(16)
+		for i := range g.Genome {
+			g.Genome[i] = byte(rng.Intn(2))
+		}
+		return g
+	}
+	evalFunc := func(g *Genotype) *Phenotype {
+		f := 0.0
+		for _, b := range g.Genome {
+			if b == 1 {
+				f++
+			}
+		}
+		return &Phenotype{Fitness: f}
+	}
+	if err := gaInstance.Initialize(20, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	result, err := gaInstance.Evolve(evalFunc)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+
+	// Re-evaluate the returned best — its declared fitness must match its
+	// actual genome. If aliasing corrupted it, these will diverge.
+	computed := evalFunc(result.Best.Genotype)
+	if computed.Fitness != result.Best.Phenotype.Fitness {
+		t.Errorf("Result.Best genome was mutated after capture: declared fitness %f, recomputed %f", result.Best.Phenotype.Fitness, computed.Fitness)
+	}
+
+	// And the all-time best must be at least as fit as the final population's best.
+	popBest := gaInstance.Population.GetBestIndividual()
+	if result.Best.Phenotype.Fitness < popBest.Phenotype.Fitness {
+		t.Errorf("Result.Best.Fitness = %f < final population best = %f", result.Best.Phenotype.Fitness, popBest.Phenotype.Fitness)
 	}
 }
 
