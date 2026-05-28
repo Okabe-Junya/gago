@@ -95,7 +95,7 @@ func TestEvolve(t *testing.T) {
 			t.Fatalf("Initialize() failed: %v", err)
 		}
 
-		bestIndividual, err := gaInstance.Evolve(evalFunc)
+		result, err := gaInstance.Evolve(evalFunc)
 		if err != nil {
 			t.Fatalf("Evolve() failed: %v", err)
 		}
@@ -107,15 +107,21 @@ func TestEvolve(t *testing.T) {
 		}
 
 		// Check if best individual is not nil
-		if bestIndividual == nil {
+		if result == nil || result.Best == nil {
 			t.Fatal("Best individual is nil after evolution")
+		}
+
+		// When Generations are exhausted without any early-stop, StopReason
+		// must be StopMaxGenerations.
+		if result.StopReason != StopMaxGenerations {
+			t.Errorf("StopReason got %q, want %q", result.StopReason, StopMaxGenerations)
 		}
 
 		// Evolve returns the all-time best individual seen across all generations,
 		// which may be fitter than the final population's best (it might not
 		// have survived selection). The invariant is: all-time best >= current best.
 		popBest := gaInstance.Population.GetBestIndividual()
-		if got, floor := bestIndividual.Phenotype.Fitness, popBest.Phenotype.Fitness; got < floor {
+		if got, floor := result.Best.Phenotype.Fitness, popBest.Phenotype.Fitness; got < floor {
 			t.Errorf("Best individual fitness got %f, want >= %f (current population best)", got, floor)
 		}
 	})
@@ -286,7 +292,7 @@ func TestParallelEvaluation(t *testing.T) {
 		t.Fatalf("Failed to evolve population with parallel evaluation: %v", err)
 	}
 
-	parallelFitness := parallelResult.Phenotype.Fitness
+	parallelFitness := parallelResult.Best.Phenotype.Fitness
 
 	// Then run sequential evaluation
 	gaInstance.NumParallelEvals = 1
@@ -300,7 +306,7 @@ func TestParallelEvaluation(t *testing.T) {
 		t.Fatalf("Failed to evolve population with sequential evaluation: %v", err)
 	}
 
-	sequentialFitness := sequentialResult.Phenotype.Fitness
+	sequentialFitness := sequentialResult.Best.Phenotype.Fitness
 
 	// Log the results for informational purposes
 	t.Logf("Parallel evaluation fitness: %v, Sequential evaluation fitness: %v",
@@ -582,11 +588,11 @@ func TestReproducibilityWithSeed(t *testing.T) {
 		if err := gaInstance.Initialize(20, initFunc, evalFunc); err != nil {
 			t.Fatalf("Initialize failed: %v", err)
 		}
-		best, err := gaInstance.Evolve(evalFunc)
+		result, err := gaInstance.Evolve(evalFunc)
 		if err != nil {
 			t.Fatalf("Evolve failed: %v", err)
 		}
-		return best
+		return result.Best
 	}
 
 	a := run(42)
@@ -600,17 +606,174 @@ func TestReproducibilityWithSeed(t *testing.T) {
 		}
 	}
 
-	// Different seeds should (almost always) diverge.
-	c := run(7)
-	sameFitness := a.Phenotype.Fitness == c.Phenotype.Fitness
-	sameGenome := true
-	for i, g := range a.Genotype.Genome {
-		if g != c.Genotype.Genome[i] {
-			sameGenome = false
-			break
+	// Note: we deliberately do not assert that different seeds diverge.
+	// On a small OneMax problem both runs may legitimately reach the all-1s
+	// optimum, in which case the all-time best is identical regardless of
+	// seed — that is correct behavior, not a bug.
+}
+
+// TestResultBestNotAliasedToPopulation is a regression test for an aliasing
+// bug: bestIndividual stored a pointer into the live population, and when
+// crossover skipped a pair the offspring aliased the parent — which the
+// mutation operator then mutated in place, silently corrupting the all-time
+// best. The fix clones the best on capture.
+func TestResultBestNotAliasedToPopulation(t *testing.T) {
+	gaInstance := &GA{
+		Selection: func(p []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(p, 3, rng)
+		},
+		Crossover:     SinglePointCrossover,
+		Mutation:      BitFlipMutation,
+		CrossoverRate: 0.5, // ~50% chance crossover is skipped → offspring aliases parent.
+		MutationRate:  0.5, // high mutation rate → in-place flips are likely.
+		Generations:   50,
+		Seed:          1,
+	}
+	initFunc := func(rng *rand.Rand) *Genotype {
+		g := NewBinaryGenotype(16)
+		for i := range g.Genome {
+			g.Genome[i] = byte(rng.Intn(2))
+		}
+		return g
+	}
+	evalFunc := func(g *Genotype) *Phenotype {
+		f := 0.0
+		for _, b := range g.Genome {
+			if b == 1 {
+				f++
+			}
+		}
+		return &Phenotype{Fitness: f}
+	}
+	if err := gaInstance.Initialize(20, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	result, err := gaInstance.Evolve(evalFunc)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+
+	// Re-evaluate the returned best — its declared fitness must match its
+	// actual genome. If aliasing corrupted it, these will diverge.
+	computed := evalFunc(result.Best.Genotype)
+	if computed.Fitness != result.Best.Phenotype.Fitness {
+		t.Errorf("Result.Best genome was mutated after capture: declared fitness %f, recomputed %f", result.Best.Phenotype.Fitness, computed.Fitness)
+	}
+
+	// And the all-time best must be at least as fit as the final population's best.
+	popBest := gaInstance.Population.GetBestIndividual()
+	if result.Best.Phenotype.Fitness < popBest.Phenotype.Fitness {
+		t.Errorf("Result.Best.Fitness = %f < final population best = %f", result.Best.Phenotype.Fitness, popBest.Phenotype.Fitness)
+	}
+}
+
+// makeOneMaxGA returns a GA configured for the OneMax problem; used by the
+// EarlyStopping / OnGeneration tests below.
+func makeOneMaxGA(t *testing.T, generations int) (*GA, func(*Genotype) *Phenotype) {
+	t.Helper()
+	gaInstance := &GA{
+		Selection: func(p []*Individual, rng *rand.Rand) []*Individual {
+			return TournamentSelection(p, 3, rng)
+		},
+		Crossover:     UniformCrossover,
+		Mutation:      BitFlipMutation,
+		CrossoverRate: 0.9,
+		MutationRate:  0.05,
+		Generations:   generations,
+		Seed:          42,
+		EnableLogger:  false,
+	}
+	initFunc := func(rng *rand.Rand) *Genotype {
+		g := NewBinaryGenotype(16)
+		for i := range g.Genome {
+			g.Genome[i] = byte(rng.Intn(2))
+		}
+		return g
+	}
+	evalFunc := func(g *Genotype) *Phenotype {
+		f := 0.0
+		for _, b := range g.Genome {
+			if b == 1 {
+				f++
+			}
+		}
+		return &Phenotype{Fitness: f}
+	}
+	if err := gaInstance.Initialize(40, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	return gaInstance, evalFunc
+}
+
+func TestEarlyStoppingTargetFitness(t *testing.T) {
+	g, eval := makeOneMaxGA(t, 500)
+	g.EarlyStopping = &EarlyStopping{TargetFitness: 16, TargetFitnessSet: true}
+	result, err := g.Evolve(eval)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+	if result.StopReason != StopTargetFitness {
+		t.Errorf("StopReason = %q, want %q", result.StopReason, StopTargetFitness)
+	}
+	if result.StoppedAtGeneration >= 500 {
+		t.Errorf("Expected early stop before generation 500, ran %d generations", result.StoppedAtGeneration)
+	}
+	if result.Best.Phenotype.Fitness < 16 {
+		t.Errorf("Best fitness = %f, want >= 16", result.Best.Phenotype.Fitness)
+	}
+}
+
+func TestEarlyStoppingPatience(t *testing.T) {
+	g, eval := makeOneMaxGA(t, 1000)
+	// Patience of 5 with a tiny tolerance should stop well before the cap.
+	g.EarlyStopping = &EarlyStopping{Patience: 5, Tol: 0}
+	result, err := g.Evolve(eval)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+	if result.StoppedAtGeneration >= 1000 {
+		t.Errorf("Expected patience to fire before generation 1000, ran %d", result.StoppedAtGeneration)
+	}
+	if result.StopReason != StopPatience && result.StopReason != StopTargetFitness {
+		// Allow target_fitness too because OneMax with a small genome may reach 16 first.
+		t.Errorf("StopReason = %q, want StopPatience (or target)", result.StopReason)
+	}
+}
+
+func TestEarlyStoppingTimeLimit(t *testing.T) {
+	g, eval := makeOneMaxGA(t, 100000)
+	g.EarlyStopping = &EarlyStopping{TimeLimit: int64(50 * time.Millisecond)}
+	result, err := g.Evolve(eval)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+	if result.StoppedAtGeneration >= 100000 {
+		t.Errorf("Expected time limit to fire, ran all %d generations", result.StoppedAtGeneration)
+	}
+	if result.StopReason != StopTimeLimit && result.StopReason != StopTargetFitness && result.StopReason != StopPatience {
+		t.Errorf("StopReason = %q, want StopTimeLimit", result.StopReason)
+	}
+}
+
+func TestOnGenerationCallback(t *testing.T) {
+	g, eval := makeOneMaxGA(t, 10)
+	var calls []int
+	g.OnGeneration = func(gen int, stats *Statistics) {
+		calls = append(calls, gen)
+		if stats == nil {
+			t.Errorf("OnGeneration received nil stats at gen %d", gen)
 		}
 	}
-	if sameFitness && sameGenome {
-		t.Errorf("Different seeds happened to produce identical results — possible (but very unlikely); review if this fires repeatedly")
+	if _, err := g.Evolve(eval); err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+	if len(calls) != 10 {
+		t.Errorf("OnGeneration called %d times, want 10", len(calls))
+	}
+	// Generations should be 1..10 (lastGen = gen + 1).
+	for i, gen := range calls {
+		if want := i + 1; gen != want {
+			t.Errorf("calls[%d] = %d, want %d", i, gen, want)
+		}
 	}
 }

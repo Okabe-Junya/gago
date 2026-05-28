@@ -45,22 +45,23 @@ func main() {
 	// Set a termination condition based on fitness threshold
 	gaInstance.TermCondition = ga.FitnessThresholdTermination(2.0) // f(x) = x*sin(x) has a maximum of ~2.0 around x = π/2
 
-	bestIndividual, err := gaInstance.Evolve(evaluatePhenotype)
+	result, err := gaInstance.Evolve(evaluatePhenotype)
 	if err != nil {
 		fmt.Printf("Error during evolution: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Get the results
-	if bestIndividual == nil {
+	if result == nil || result.Best == nil {
 		fmt.Println("Error: Failed to find a solution")
 		os.Exit(1)
 	}
 
-	bestX := decodeGenotype(bestIndividual.Genotype)
+	bestX := decodeGenotype(result.Best.Genotype)
 
-	fmt.Printf("Best x: %f, Fitness: %f\n", bestX, bestIndividual.Phenotype.Fitness)
-	fmt.Printf("Total generations: %d\n", len(gaInstance.History)-1)
+	fmt.Printf("Best x: %f, Fitness: %f\n", bestX, result.Best.Phenotype.Fitness)
+	fmt.Printf("Stop reason: %s\n", result.StopReason)
+	fmt.Printf("Stopped at generation: %d\n", result.StoppedAtGeneration)
 	fmt.Printf("Total runtime: %v\n", gaInstance.GetRuntime())
 }
 
