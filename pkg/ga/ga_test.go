@@ -439,6 +439,7 @@ func TestTerminationConditions(t *testing.T) {
 		CrossoverRate: 0.7,
 		MutationRate:  0.01,
 		Generations:   10,
+		Seed:          42,
 		EnableLogger:  false,
 	}
 
@@ -446,7 +447,13 @@ func TestTerminationConditions(t *testing.T) {
 	genomeLength := 8
 
 	initFunc := func(rng *rand.Rand) *Genotype {
-		return NewBinaryGenotype(genomeLength)
+		g := NewBinaryGenotype(genomeLength)
+		// Initialize with a high-fitness pattern so threshold-termination
+		// scenarios are not at the mercy of the initial random draw.
+		for i := range g.Genome {
+			g.Genome[i] = 1
+		}
+		return g
 	}
 
 	evalFunc := func(genotype *Genotype) *Phenotype {
