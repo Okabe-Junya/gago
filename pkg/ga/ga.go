@@ -44,6 +44,8 @@ type GA struct {
 	Crossover        func([]*Individual, float64, *rand.Rand) []*Individual
 	Mutation         func([]*Individual, float64, *rand.Rand)
 	TermCondition    TerminationCondition
+	EarlyStopping    *EarlyStopping
+	OnGeneration     func(gen int, stats *Statistics)
 	Population       *Population
 	History          []*Statistics
 	Generations      int
@@ -169,16 +171,22 @@ func (ga *GA) Initialize(populationSize int, initializeGenotype func(*rand.Rand)
 // the population and evaluates each new individual.
 //
 // The evolution process continues until either:
-// - The maximum number of generations is reached
-// - A termination condition is met
+//   - The maximum number of generations is reached
+//   - GA.TermCondition.Evaluate returns true
+//   - Any criterion configured on GA.EarlyStopping fires (patience exhausted,
+//     target fitness reached, or wall-clock time limit hit)
 //
 // Parameters:
 //   - evaluatePhenotype: A function that evaluates a genotype and returns its phenotype.
 //
 // Returns:
-//   - The best individual found during the evolution process.
-//   - An error if any step of the evolution process fails.
-func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual, error) {
+//   - A *Result containing the all-time best individual, the final population,
+//     history, the StopReason that ended the run, and the index of the last
+//     generation that ran.
+//   - An error if any step of the evolution process fails; in that case
+//     Result.StopReason is StopError and the returned Result still contains
+//     whatever progress had been made before the failure.
+func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Result, error) {
 	if evaluatePhenotype == nil {
 		return nil, fmt.Errorf("evaluatePhenotype function cannot be nil")
 	}
@@ -192,6 +200,8 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 
 	bestFitness := bestIndividual.Phenotype.Fitness
 	noImprovementCount := 0
+	stopReason := StopMaxGenerations
+	lastGen := 0
 
 	// Pre-allocate slices for better performance
 	var selectedIndividuals []*Individual
@@ -279,7 +289,13 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 			return nil, fmt.Errorf("population contains no valid individuals at generation %d", gen)
 		}
 
-		if currentBest.Phenotype.Fitness > bestFitness {
+		// EarlyStopping.Tol turns "any improvement" into "improvement > Tol";
+		// reuse the same threshold for the loop's own noImprovementCount.
+		tol := 0.0
+		if ga.EarlyStopping != nil {
+			tol = ga.EarlyStopping.Tol
+		}
+		if currentBest.Phenotype.Fitness > bestFitness+tol {
 			bestIndividual = currentBest
 			bestFitness = currentBest.Phenotype.Fitness
 			noImprovementCount = 0
@@ -289,6 +305,30 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 
 		// Add current statistics to history
 		ga.History = append(ga.History, ga.Population.Statistics)
+		lastGen = gen + 1
+
+		if ga.OnGeneration != nil {
+			ga.OnGeneration(lastGen, ga.Population.Statistics)
+		}
+
+		// Check stop criteria after recording statistics. EarlyStopping fires
+		// before TermCondition so that StopReason reports the more specific
+		// reason when both would fire on the same generation.
+		if ga.EarlyStopping != nil {
+			es := ga.EarlyStopping
+			if es.TargetFitnessSet && ga.Population.Statistics.BestFitness >= es.TargetFitness {
+				stopReason = StopTargetFitness
+				break
+			}
+			if es.TimeLimit > 0 && time.Since(ga.StartTime).Nanoseconds() >= es.TimeLimit {
+				stopReason = StopTimeLimit
+				break
+			}
+			if es.Patience > 0 && noImprovementCount >= es.Patience {
+				stopReason = StopPatience
+				break
+			}
+		}
 
 		// Check termination condition after recording statistics
 		if ga.TermCondition != nil && ga.TermCondition.Evaluate(ga) {
@@ -298,11 +338,18 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 					"generation", gen,
 					"totalRuntime", time.Since(ga.StartTime))
 			}
+			stopReason = StopTermCondition
 			break
 		}
 	}
 
-	return bestIndividual, nil
+	return &Result{
+		Best:                bestIndividual,
+		Population:          ga.Population,
+		History:             ga.History,
+		StopReason:          stopReason,
+		StoppedAtGeneration: lastGen,
+	}, nil
 }
 
 // evaluatePopulationInParallel evaluates the fitness of individuals in parallel.
