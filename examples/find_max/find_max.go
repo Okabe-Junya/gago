@@ -10,6 +10,8 @@ import (
 	"github.com/Okabe-Junya/gago/pkg/ga"
 )
 
+const seed = 42 // deterministic for reproducibility
+
 const (
 	populationSize = 50
 	genomeLength   = 16 // Length of the binary representation of the genotype
@@ -24,12 +26,15 @@ const (
 func main() {
 	// Configure the GA with appropriate parameters
 	gaInstance := &ga.GA{
-		Selection:     func(population []*ga.Individual) []*ga.Individual { return ga.TournamentSelection(population, 3) },
+		Selection: func(population []*ga.Individual, rng *rand.Rand) []*ga.Individual {
+			return ga.TournamentSelection(population, 3, rng)
+		},
 		Crossover:     ga.SinglePointCrossover,
 		Mutation:      ga.BitFlipMutation,
 		CrossoverRate: crossoverRate,
 		MutationRate:  mutationRate,
 		Generations:   generations,
+		Seed:          seed,
 		EnableLogger:  true,
 		LogLevel:      logger.LevelInfo, // Set appropriate log level
 	}
@@ -60,10 +65,10 @@ func main() {
 }
 
 // initializeGenotype creates a new binary genotype for the problem.
-func initializeGenotype() *ga.Genotype {
+func initializeGenotype(rng *rand.Rand) *ga.Genotype {
 	genotype := ga.NewBinaryGenotype(genomeLength)
 	for i := range genotype.Genome {
-		genotype.Genome[i] = byte(rand.Intn(2))
+		genotype.Genome[i] = byte(rng.Intn(2))
 	}
 	return genotype
 }

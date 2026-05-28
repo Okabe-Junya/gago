@@ -51,7 +51,7 @@ func NewBinaryGenotype(genomeLength int) *Genotype {
 
 // NewIntegerGenotype creates a new integer genotype with the specified length,
 // and values between minValue and maxValue.
-func NewIntegerGenotype(genomeLength int, minValue, maxValue int) *Genotype {
+func NewIntegerGenotype(genomeLength int, minValue, maxValue int, rng *rand.Rand) *Genotype {
 	genotype := &Genotype{
 		Genome:     make([]byte, genomeLength),
 		GenomeType: IntegerEncoding,
@@ -62,7 +62,7 @@ func NewIntegerGenotype(genomeLength int, minValue, maxValue int) *Genotype {
 	// Initialize with random values
 	for i := range genotype.Genome {
 		rangeValue := maxValue - minValue + 1
-		genotype.Genome[i] = byte(rand.Intn(rangeValue) + minValue)
+		genotype.Genome[i] = byte(rng.Intn(rangeValue) + minValue)
 		genotype.MinValues[i] = float64(minValue)
 		genotype.MaxValues[i] = float64(maxValue)
 	}
@@ -72,7 +72,7 @@ func NewIntegerGenotype(genomeLength int, minValue, maxValue int) *Genotype {
 
 // NewRealGenotype creates a new real-valued genotype with the specified length,
 // and values between minValues and maxValues.
-func NewRealGenotype(genomeLength int, minValues, maxValues []float64) *Genotype {
+func NewRealGenotype(genomeLength int, minValues, maxValues []float64, rng *rand.Rand) *Genotype {
 	genotype := &Genotype{
 		Genome:     make([]byte, genomeLength),
 		GenomeType: RealEncoding,
@@ -89,8 +89,8 @@ func NewRealGenotype(genomeLength int, minValues, maxValues []float64) *Genotype
 		genotype.MinValues[i] = min
 		genotype.MaxValues[i] = max
 
-		// 正規化された値をバイトとして保存
-		normalizedValue := rand.Float64()
+		// Store the normalized value as a byte.
+		normalizedValue := rng.Float64()
 		genotype.Genome[i] = byte(255 * normalizedValue)
 	}
 
@@ -98,7 +98,7 @@ func NewRealGenotype(genomeLength int, minValues, maxValues []float64) *Genotype
 }
 
 // NewPermutationGenotype creates a new permutation genotype with values [0, 1, ..., size-1].
-func NewPermutationGenotype(size int) *Genotype {
+func NewPermutationGenotype(size int, rng *rand.Rand) *Genotype {
 	genotype := &Genotype{
 		Genome:     make([]byte, size),
 		GenomeType: PermutationEncoding,
@@ -111,7 +111,7 @@ func NewPermutationGenotype(size int) *Genotype {
 
 	// Shuffle the genotype to create a random permutation
 	for i := size - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
+		j := rng.Intn(i + 1)
 		genotype.Genome[i], genotype.Genome[j] = genotype.Genome[j], genotype.Genome[i]
 	}
 
@@ -126,18 +126,18 @@ func NewPhenotype(fitness float64) *Phenotype {
 }
 
 // MutateReal mutates a real-valued genotype by adding Gaussian noise.
-func MutateReal(genotype *Genotype, minValues, maxValues []float64, mutationRate float64, sigma float64) {
+func MutateReal(genotype *Genotype, minValues, maxValues []float64, mutationRate float64, sigma float64, rng *rand.Rand) {
 	if genotype == nil || len(genotype.Genome) == 0 {
 		return
 	}
 
 	for i := range genotype.Genome {
-		if rand.Float64() < mutationRate {
+		if rng.Float64() < mutationRate {
 			// Calculate the valid range for this gene
 			rangeValue := maxValues[i%len(maxValues)] - minValues[i%len(minValues)]
 
 			// Add Gaussian noise scaled by sigma and the range
-			delta := rand.NormFloat64() * sigma * rangeValue
+			delta := rng.NormFloat64() * sigma * rangeValue
 
 			// Apply the mutation and clamp to valid range
 			newValue := float64(genotype.Genome[i]) + delta

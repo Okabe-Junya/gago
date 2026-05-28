@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"runtime"
 	"sync"
 	"time"
@@ -28,24 +29,40 @@ func (f TerminationConditionFunc) Evaluate(ga *GA) bool {
 
 // GA represents the genetic algorithm, including its population, genetic operators,
 // and parameters for crossover and mutation rates, and the number of generations to evolve.
+//
+// Reproducibility: when Seed is non-zero, the GA owns a single *rand.Rand
+// seeded with that value; every random decision in the main evolution loop
+// (selection, crossover, mutation, initialization) draws from it, so runs
+// are bit-for-bit reproducible. When Seed is 0, the rng is seeded from
+// time.Now().UnixNano(). The rng is single-goroutine only; parallel fitness
+// evaluation must not touch it.
 type GA struct {
 	StartTime        time.Time
 	Logger           *logger.Logger
-	Selection        func([]*Individual) []*Individual
-	Crossover        func([]*Individual, float64) []*Individual
-	Mutation         func([]*Individual, float64)
+	rng              *rand.Rand
+	Selection        func([]*Individual, *rand.Rand) []*Individual
+	Crossover        func([]*Individual, float64, *rand.Rand) []*Individual
+	Mutation         func([]*Individual, float64, *rand.Rand)
 	TermCondition    TerminationCondition
 	Population       *Population
 	History          []*Statistics
 	Generations      int
 	ElitismCount     int
 	NumParallelEvals int
+	Seed             int64
 	MutationRate     float64
 	CrossoverRate    float64
 	LogLevel         logger.LogLevel
 	AdaptiveParams   bool
 	EnableLogger     bool
 	LogJSON          bool
+}
+
+// RNG returns the GA's random source. May be nil if Initialize has not run yet.
+// Callers that need to generate random numbers consistent with the GA's seed
+// (e.g., custom genotype initializers) should draw from this.
+func (ga *GA) RNG() *rand.Rand {
+	return ga.rng
 }
 
 // Function variable for time operations, allows for test mocking
@@ -57,11 +74,12 @@ var timeNow = time.Now
 // Parameters:
 //   - populationSize: The size of the population to initialize.
 //   - initializeGenotype: A function that creates a new genotype for an individual.
+//     It receives the GA's seeded *rand.Rand so initialization is reproducible.
 //   - evaluatePhenotype: A function that evaluates a genotype and returns its phenotype.
 //
 // Returns an error if the input parameters are invalid or if any of the required
 // genetic operators are not provided.
-func (ga *GA) Initialize(populationSize int, initializeGenotype func() *Genotype, evaluatePhenotype func(*Genotype) *Phenotype) error {
+func (ga *GA) Initialize(populationSize int, initializeGenotype func(*rand.Rand) *Genotype, evaluatePhenotype func(*Genotype) *Phenotype) error {
 	// Validate input parameters
 	if populationSize <= 0 {
 		return fmt.Errorf("population size must be positive, got %d", populationSize)
@@ -73,9 +91,16 @@ func (ga *GA) Initialize(populationSize int, initializeGenotype func() *Genotype
 		return fmt.Errorf("evaluatePhenotype function cannot be nil")
 	}
 
+	// Seed the GA's RNG. Seed == 0 means "auto-seed from time".
+	if ga.Seed == 0 {
+		ga.rng = rand.New(rand.NewSource(timeNow().UnixNano()))
+	} else {
+		ga.rng = rand.New(rand.NewSource(ga.Seed))
+	}
+
 	// Create individuals with the initialization function
 	initFunc := func() *Individual {
-		genotype := initializeGenotype()
+		genotype := initializeGenotype(ga.rng)
 		if genotype == nil {
 			panic("initializeGenotype returned nil genotype")
 		}
@@ -189,17 +214,17 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Individual,
 		}
 
 		// Apply genetic operators
-		selectedIndividuals = ga.Selection(ga.Population.Individuals)
+		selectedIndividuals = ga.Selection(ga.Population.Individuals, ga.rng)
 		if len(selectedIndividuals) == 0 {
 			return nil, fmt.Errorf("selection operator returned empty population at generation %d", gen)
 		}
 
-		offspring = ga.Crossover(selectedIndividuals, ga.CrossoverRate)
+		offspring = ga.Crossover(selectedIndividuals, ga.CrossoverRate, ga.rng)
 		if len(offspring) == 0 {
 			return nil, fmt.Errorf("crossover operator returned empty population at generation %d", gen)
 		}
 
-		ga.Mutation(offspring, ga.MutationRate)
+		ga.Mutation(offspring, ga.MutationRate, ga.rng)
 
 		// Store elite individuals if elitism is enabled
 		if ga.ElitismCount > 0 {

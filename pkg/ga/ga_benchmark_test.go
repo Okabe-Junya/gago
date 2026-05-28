@@ -1,6 +1,7 @@
 package ga
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -25,7 +26,9 @@ func BenchmarkEvolution(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			gaInstance := &GA{
-				Selection:        func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+				Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+					return TournamentSelection(population, 3, rng)
+				},
 				Crossover:        SinglePointCrossover,
 				Mutation:         BitFlipMutation,
 				CrossoverRate:    0.7,
@@ -35,7 +38,7 @@ func BenchmarkEvolution(b *testing.B) {
 				EnableLogger:     false,
 			}
 
-			initFunc := func() *Genotype {
+			initFunc := func(rng *rand.Rand) *Genotype {
 				return NewBinaryGenotype(tc.genomeLength)
 			}
 
@@ -80,6 +83,8 @@ func BenchmarkGeneticOperators(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
+			rng := rand.New(rand.NewSource(42))
+
 			// テスト用の個体を生成
 			individuals := make([]*Individual, tc.populationSize)
 			for i := range individuals {
@@ -95,7 +100,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			b.Run("Selection", func(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					TournamentSelection(individuals, 3)
+					TournamentSelection(individuals, 3, rng)
 				}
 			})
 
@@ -103,7 +108,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			b.Run("Crossover", func(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					SinglePointCrossover(individuals, 0.7)
+					SinglePointCrossover(individuals, 0.7, rng)
 				}
 			})
 
@@ -111,7 +116,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			b.Run("Mutation", func(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					BitFlipMutation(individuals, 0.01)
+					BitFlipMutation(individuals, 0.01, rng)
 				}
 			})
 		})
@@ -134,7 +139,9 @@ func BenchmarkMemoryUsage(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			gaInstance := &GA{
-				Selection:     func(population []*Individual) []*Individual { return TournamentSelection(population, 3) },
+				Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
+					return TournamentSelection(population, 3, rng)
+				},
 				Crossover:     SinglePointCrossover,
 				Mutation:      BitFlipMutation,
 				CrossoverRate: 0.7,
@@ -143,7 +150,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				EnableLogger:  false,
 			}
 
-			initFunc := func() *Genotype {
+			initFunc := func(rng *rand.Rand) *Genotype {
 				return NewBinaryGenotype(tc.genomeLength)
 			}
 

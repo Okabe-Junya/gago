@@ -1,11 +1,13 @@
 package ga
 
 import (
+	"math/rand"
 	"reflect"
 	"testing"
 )
 
 func TestTournamentSelection(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
 	cases := []struct {
 		population     []*Individual
 		tournamentSize int
@@ -31,7 +33,7 @@ func TestTournamentSelection(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		selected := TournamentSelection(tc.population, tc.tournamentSize)
+		selected := TournamentSelection(tc.population, tc.tournamentSize, rng)
 
 		if len(selected) != len(tc.population) {
 			t.Fatalf("Expected selected length %d, but got %d", len(tc.population), len(selected))
@@ -53,6 +55,7 @@ func TestTournamentSelection(t *testing.T) {
 }
 
 func TestRouletteWheelSelection(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
 	cases := []struct {
 		population []*Individual
 	}{
@@ -75,7 +78,7 @@ func TestRouletteWheelSelection(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		selected := RouletteWheelSelection(tc.population)
+		selected := RouletteWheelSelection(tc.population, rng)
 
 		if len(selected) != len(tc.population) {
 			t.Fatalf("Expected selected length %d, but got %d", len(tc.population), len(selected))

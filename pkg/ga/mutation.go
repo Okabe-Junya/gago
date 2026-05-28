@@ -14,12 +14,13 @@ import (
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each gene will be mutated.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func BitFlipMutation(population []*Individual, mutationRate float64) {
+func BitFlipMutation(population []*Individual, mutationRate float64, rng *rand.Rand) {
 	for _, ind := range population {
 		for i := range ind.Genotype.Genome {
-			if rand.Float64() < mutationRate {
+			if rng.Float64() < mutationRate {
 				ind.Genotype.Genome[i] = 1 - ind.Genotype.Genome[i]
 			}
 		}
@@ -34,9 +35,10 @@ func BitFlipMutation(population []*Individual, mutationRate float64) {
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each gene will be considered for swapping.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func SwapMutation(population []*Individual, mutationRate float64) {
+func SwapMutation(population []*Individual, mutationRate float64, rng *rand.Rand) {
 	for _, ind := range population {
 		genomeLen := len(ind.Genotype.Genome)
 		if genomeLen <= 1 {
@@ -44,8 +46,8 @@ func SwapMutation(population []*Individual, mutationRate float64) {
 		}
 
 		for i := range ind.Genotype.Genome {
-			if rand.Float64() < mutationRate {
-				j := rand.Intn(genomeLen - 1)
+			if rng.Float64() < mutationRate {
+				j := rng.Intn(genomeLen - 1)
 				if j >= i {
 					j++
 				}
@@ -63,14 +65,15 @@ func SwapMutation(population []*Individual, mutationRate float64) {
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each gene will be mutated.
 // - sigma: the standard deviation of the normal distribution.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func GaussianMutation(population []*Individual, mutationRate float64, sigma float64) {
+func GaussianMutation(population []*Individual, mutationRate float64, sigma float64, rng *rand.Rand) {
 	for _, ind := range population {
 		for i := range ind.Genotype.Genome {
-			if rand.Float64() < mutationRate {
+			if rng.Float64() < mutationRate {
 				// Add Gaussian noise to the gene
-				delta := rand.NormFloat64() * sigma
+				delta := rng.NormFloat64() * sigma
 
 				// Convert to byte with bounds checking
 				result := float64(ind.Genotype.Genome[i]) + delta
@@ -92,19 +95,20 @@ func GaussianMutation(population []*Individual, mutationRate float64, sigma floa
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each individual will be mutated.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func InversionMutation(population []*Individual, mutationRate float64) {
+func InversionMutation(population []*Individual, mutationRate float64, rng *rand.Rand) {
 	for _, ind := range population {
-		if rand.Float64() < mutationRate {
+		if rng.Float64() < mutationRate {
 			genomeLen := len(ind.Genotype.Genome)
 			if genomeLen <= 1 {
 				continue
 			}
 
 			// Select two random points
-			point1 := rand.Intn(genomeLen)
-			point2 := rand.Intn(genomeLen)
+			point1 := rng.Intn(genomeLen)
+			point2 := rng.Intn(genomeLen)
 
 			// Ensure point1 < point2
 			if point1 > point2 {
@@ -125,19 +129,20 @@ func InversionMutation(population []*Individual, mutationRate float64) {
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each individual will be mutated.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func ScrambleMutation(population []*Individual, mutationRate float64) {
+func ScrambleMutation(population []*Individual, mutationRate float64, rng *rand.Rand) {
 	for _, ind := range population {
-		if rand.Float64() < mutationRate {
+		if rng.Float64() < mutationRate {
 			genomeLen := len(ind.Genotype.Genome)
 			if genomeLen <= 1 {
 				continue
 			}
 
 			// Select two random points
-			point1 := rand.Intn(genomeLen)
-			point2 := rand.Intn(genomeLen)
+			point1 := rng.Intn(genomeLen)
+			point2 := rng.Intn(genomeLen)
 
 			// Ensure point1 < point2
 			if point1 > point2 {
@@ -149,7 +154,7 @@ func ScrambleMutation(population []*Individual, mutationRate float64) {
 			copy(segment, ind.Genotype.Genome[point1:point2+1])
 
 			// Shuffle the segment
-			rand.Shuffle(len(segment), func(i, j int) {
+			rng.Shuffle(len(segment), func(i, j int) {
 				segment[i], segment[j] = segment[j], segment[i]
 			})
 
@@ -168,15 +173,16 @@ func ScrambleMutation(population []*Individual, mutationRate float64) {
 // - mutationRate: the probability with which each gene will be mutated.
 // - min: the minimum value for the random replacement.
 // - max: the maximum value for the random replacement.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
-func UniformMutation(population []*Individual, mutationRate float64, min, max byte) {
+func UniformMutation(population []*Individual, mutationRate float64, min, max byte, rng *rand.Rand) {
 	for _, ind := range population {
 		for i := range ind.Genotype.Genome {
-			if rand.Float64() < mutationRate {
+			if rng.Float64() < mutationRate {
 				// Replace with a random value in the range [min, max]
 				rangeValue := int(max) - int(min) + 1
-				ind.Genotype.Genome[i] = min + byte(rand.Intn(rangeValue))
+				ind.Genotype.Genome[i] = min + byte(rng.Intn(rangeValue))
 			}
 		}
 	}
@@ -192,13 +198,15 @@ func UniformMutation(population []*Individual, mutationRate float64, min, max by
 // - mutationFunc: the mutation function to apply with the adaptive rates.
 // - bestFitness: the fitness of the best individual in the population.
 // - worstFitness: the fitness of the worst individual in the population.
+// - rng: the random source.
 //
 // This function modifies the input population in place.
 func AdaptiveMutation(
 	population []*Individual,
 	baseMutationRate float64,
-	mutationFunc func([]*Individual, float64),
+	mutationFunc func([]*Individual, float64, *rand.Rand),
 	bestFitness, worstFitness float64,
+	rng *rand.Rand,
 ) {
 	fitnessDiff := worstFitness - bestFitness
 
@@ -217,7 +225,7 @@ func AdaptiveMutation(
 
 		// Apply mutation with adaptive rate
 		singleIndividual := []*Individual{ind}
-		mutationFunc(singleIndividual, adaptiveRate)
+		mutationFunc(singleIndividual, adaptiveRate, rng)
 		population[i] = singleIndividual[0]
 	}
 }
