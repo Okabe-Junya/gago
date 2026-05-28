@@ -156,8 +156,59 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 	return offspring
 }
 
-// OrderBasedCrossover performs an order-based crossover on the given population.
-// This type of crossover is useful for permutation problems (like TSP).
+// TwoPointCrossover performs a two-point crossover on the given population.
+//
+// Two cut points are selected uniformly at random and the genes between them
+// are swapped between the parents to form the two children.
+//
+// Parameters:
+// - population: a slice of pointers to Individual, representing the current population.
+// - crossoverRate: the probability with which crossover will occur.
+//
+// Returns:
+// - A new population of offspring generated from the input population.
+func TwoPointCrossover(population []*Individual, crossoverRate float64) []*Individual {
+	offspring := make([]*Individual, len(population))
+	for i := 0; i < len(population)/2; i++ {
+		if rand.Float64() < crossoverRate {
+			parent1 := population[2*i].Genotype
+			parent2 := population[2*i+1].Genotype
+			genomeLength := len(parent1.Genome)
+			if genomeLength < 3 {
+				// Fall back to single-point semantics for very short genomes.
+				offspring[2*i] = population[2*i]
+				offspring[2*i+1] = population[2*i+1]
+				continue
+			}
+			a := rand.Intn(genomeLength - 1)
+			b := a + 1 + rand.Intn(genomeLength-1-a)
+
+			child1 := &Genotype{Genome: make([]byte, genomeLength), GenomeType: parent1.GenomeType}
+			child2 := &Genotype{Genome: make([]byte, genomeLength), GenomeType: parent2.GenomeType}
+			copy(child1.Genome[:a], parent1.Genome[:a])
+			copy(child1.Genome[a:b], parent2.Genome[a:b])
+			copy(child1.Genome[b:], parent1.Genome[b:])
+			copy(child2.Genome[:a], parent2.Genome[:a])
+			copy(child2.Genome[a:b], parent1.Genome[a:b])
+			copy(child2.Genome[b:], parent2.Genome[b:])
+			offspring[2*i] = &Individual{Genotype: child1}
+			offspring[2*i+1] = &Individual{Genotype: child2}
+		} else {
+			offspring[2*i] = population[2*i]
+			offspring[2*i+1] = population[2*i+1]
+		}
+	}
+	return offspring
+}
+
+// OrderBasedCrossover performs Davis Order Crossover (OX1) on the given population.
+// Suitable for permutation encodings (e.g., TSP): both children remain valid
+// permutations of the parents' shared gene multiset.
+//
+// A random segment [a, b) of parent1 is copied to child1 at the same positions.
+// The remaining positions are filled with parent2's genes in their original
+// order, starting at index b (with wrap-around) and skipping genes already
+// present in the copied segment. child2 is produced symmetrically.
 //
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
@@ -173,30 +224,22 @@ func OrderBasedCrossover(population []*Individual, crossoverRate float64) []*Ind
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			genomeLength := len(parent1.Genome)
-
-			// Select a random subset of positions
-			start := rand.Intn(genomeLength)
-			length := rand.Intn(genomeLength - start + 1)
-			end := start + length
-
-			// Create children
-			child1 := &Genotype{Genome: make([]byte, genomeLength)}
-			child2 := &Genotype{Genome: make([]byte, genomeLength)}
-
-			// Initialize with -1 to mark as unfilled
-			for j := 0; j < genomeLength; j++ {
-				child1.Genome[j] = 255 // Sentinel value
-				child2.Genome[j] = 255 // Sentinel value
+			if genomeLength < 2 {
+				offspring[2*i] = population[2*i]
+				offspring[2*i+1] = population[2*i+1]
+				continue
 			}
 
-			// Copy the selected segment from parent to child
-			copy(child1.Genome[start:end], parent1.Genome[start:end])
-			copy(child2.Genome[start:end], parent2.Genome[start:end])
+			a := rand.Intn(genomeLength)
+			b := rand.Intn(genomeLength)
+			if a > b {
+				a, b = b, a
+			}
+			// Use the half-open interval [a, b+1) so the segment is non-empty.
+			end := b + 1
 
-			// Fill the remaining positions in the order they appear in the other parent
-			fillOrderBasedOffspring(parent2.Genome, child1.Genome, start, end)
-			fillOrderBasedOffspring(parent1.Genome, child2.Genome, start, end)
-
+			child1 := &Genotype{Genome: orderCrossoverChild(parent1.Genome, parent2.Genome, a, end), GenomeType: parent1.GenomeType}
+			child2 := &Genotype{Genome: orderCrossoverChild(parent2.Genome, parent1.Genome, a, end), GenomeType: parent2.GenomeType}
 			offspring[2*i] = &Individual{Genotype: child1}
 			offspring[2*i+1] = &Individual{Genotype: child2}
 		} else {
@@ -208,31 +251,190 @@ func OrderBasedCrossover(population []*Individual, crossoverRate float64) []*Ind
 	return offspring
 }
 
-// fillOrderBasedOffspring fills the remaining positions in a child genome for order-based crossover.
-func fillOrderBasedOffspring(parentGenome, childGenome []byte, start, end int) {
-	childIdx := 0
-
-	// Skip positions that are already filled
-	if childIdx == start {
-		childIdx = end
+// orderCrossoverChild builds one OX1 child: copy parent1[start:end] into the
+// child at the same positions, then fill the remaining slots with parent2's
+// genes in their original order starting from index end (with wrap-around),
+// skipping genes already in the copied segment.
+func orderCrossoverChild(p1, p2 []byte, start, end int) []byte {
+	n := len(p1)
+	child := make([]byte, n)
+	used := make(map[byte]bool, end-start)
+	for i := start; i < end; i++ {
+		child[i] = p1[i]
+		used[p1[i]] = true
 	}
+	write := end % n
+	for offset := 0; offset < n; offset++ {
+		gene := p2[(end+offset)%n]
+		if used[gene] {
+			continue
+		}
+		// Skip the segment positions.
+		if write == start {
+			write = end % n
+		}
+		child[write] = gene
+		used[gene] = true
+		write = (write + 1) % n
+		if write == start {
+			write = end % n
+		}
+	}
+	return child
+}
 
-	for _, gene := range parentGenome {
-		// Check if this gene is already in the child
-		alreadyExists := false
-		for j := start; j < end; j++ {
-			if childGenome[j] == gene {
-				alreadyExists = true
+// PMXCrossover performs Partially-Mapped Crossover (PMX) on the given population.
+// Suitable for permutation encodings.
+//
+// A random segment [a, b] of parent1 is copied to child1 at the same positions.
+// The remaining positions are inherited from parent2; any gene already used by
+// the copied segment is resolved by walking a mapping table derived from the
+// two segments until an unused gene is found. child2 is produced symmetrically.
+//
+// Parameters:
+// - population: a slice of pointers to Individual.
+// - crossoverRate: the probability with which crossover will occur.
+//
+// Returns:
+// - A new population of offspring generated from the input population.
+func PMXCrossover(population []*Individual, crossoverRate float64) []*Individual {
+	offspring := make([]*Individual, len(population))
+
+	for i := 0; i < len(population)/2; i++ {
+		if rand.Float64() < crossoverRate {
+			parent1 := population[2*i].Genotype
+			parent2 := population[2*i+1].Genotype
+			n := len(parent1.Genome)
+			if n < 2 {
+				offspring[2*i] = population[2*i]
+				offspring[2*i+1] = population[2*i+1]
+				continue
+			}
+
+			a := rand.Intn(n)
+			b := rand.Intn(n)
+			if a > b {
+				a, b = b, a
+			}
+
+			child1 := &Genotype{Genome: pmxChild(parent1.Genome, parent2.Genome, a, b), GenomeType: parent1.GenomeType}
+			child2 := &Genotype{Genome: pmxChild(parent2.Genome, parent1.Genome, a, b), GenomeType: parent2.GenomeType}
+			offspring[2*i] = &Individual{Genotype: child1}
+			offspring[2*i+1] = &Individual{Genotype: child2}
+		} else {
+			offspring[2*i] = population[2*i]
+			offspring[2*i+1] = population[2*i+1]
+		}
+	}
+	return offspring
+}
+
+// pmxChild builds one PMX child by copying p1[a:b+1] into the child and
+// resolving conflicts in positions outside the segment via the mapping
+// p1[i] -> p2[i] for i in [a, b].
+func pmxChild(p1, p2 []byte, a, b int) []byte {
+	n := len(p1)
+	child := make([]byte, n)
+	copy(child, p2)
+	inSegment := make(map[byte]bool, b-a+1)
+	mapping := make(map[byte]byte, b-a+1)
+	for i := a; i <= b; i++ {
+		child[i] = p1[i]
+		inSegment[p1[i]] = true
+		mapping[p1[i]] = p2[i]
+	}
+	for i := 0; i < n; i++ {
+		if i >= a && i <= b {
+			continue
+		}
+		val := p2[i]
+		seen := make(map[byte]bool)
+		for inSegment[val] {
+			if seen[val] {
+				// Defensive: malformed input (parents not the same multiset).
 				break
 			}
+			seen[val] = true
+			val = mapping[val]
 		}
+		child[i] = val
+	}
+	return child
+}
 
-		if !alreadyExists {
-			childGenome[childIdx] = gene
-			childIdx++
-			if childIdx == start {
-				childIdx = end
+// CycleCrossover performs Cycle Crossover (CX) on the given population.
+// Suitable for permutation encodings.
+//
+// CX identifies the positional cycles between the two parents. Even-indexed
+// cycles take their values from parent1 for child1 (and from parent2 for
+// child2); odd-indexed cycles swap. Every position in each child comes from
+// one of the parents at the same index, so absolute positions are preserved.
+//
+// Parameters:
+// - population: a slice of pointers to Individual.
+// - crossoverRate: the probability with which crossover will occur.
+//
+// Returns:
+// - A new population of offspring generated from the input population.
+func CycleCrossover(population []*Individual, crossoverRate float64) []*Individual {
+	offspring := make([]*Individual, len(population))
+
+	for i := 0; i < len(population)/2; i++ {
+		if rand.Float64() < crossoverRate {
+			parent1 := population[2*i].Genotype
+			parent2 := population[2*i+1].Genotype
+			n := len(parent1.Genome)
+			if n < 2 {
+				offspring[2*i] = population[2*i]
+				offspring[2*i+1] = population[2*i+1]
+				continue
 			}
+
+			c1Genome, c2Genome := cycleCrossoverChildren(parent1.Genome, parent2.Genome)
+			child1 := &Genotype{Genome: c1Genome, GenomeType: parent1.GenomeType}
+			child2 := &Genotype{Genome: c2Genome, GenomeType: parent2.GenomeType}
+			offspring[2*i] = &Individual{Genotype: child1}
+			offspring[2*i+1] = &Individual{Genotype: child2}
+		} else {
+			offspring[2*i] = population[2*i]
+			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	return offspring
+}
+
+func cycleCrossoverChildren(p1, p2 []byte) (child1, child2 []byte) {
+	n := len(p1)
+	child1 = make([]byte, n)
+	child2 = make([]byte, n)
+	visited := make([]bool, n)
+	indexInP2 := make(map[byte]int, n)
+	for i, v := range p2 {
+		indexInP2[v] = i
+	}
+	cycle := 0
+	for start := 0; start < n; start++ {
+		if visited[start] {
+			continue
+		}
+		i := start
+		for !visited[i] {
+			visited[i] = true
+			if cycle%2 == 0 {
+				child1[i] = p1[i]
+				child2[i] = p2[i]
+			} else {
+				child1[i] = p2[i]
+				child2[i] = p1[i]
+			}
+			next, ok := indexInP2[p1[i]]
+			if !ok {
+				// Defensive: malformed input. Break the cycle.
+				break
+			}
+			i = next
+		}
+		cycle++
+	}
+	return child1, child2
 }
