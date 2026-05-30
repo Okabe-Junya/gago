@@ -1,38 +1,47 @@
+version: "2"
 run:
   timeout: "20m"
   allow-parallel-runners: true
-  go: "1.23"
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - bodyclose
     - errcheck
     - gocritic
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - noctx
     - staticcheck
     - unused
-
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      - shadow
-  staticcheck:
-    checks: ["-SA1006"]
-
-issues:
-  exclude-use-default: true
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - noctx
-        - govet
-
-output:
-  print-linter-name: true
+  settings:
+    govet:
+      disable:
+        - shadow
+      enable-all: true
+    staticcheck:
+      checks:
+        - -SA1006
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - govet
+          - noctx
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
