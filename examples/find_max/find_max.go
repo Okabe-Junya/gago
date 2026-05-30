@@ -40,7 +40,10 @@ func main() {
 	}
 
 	// Initialize and run the GA
-	gaInstance.Initialize(populationSize, initializeGenotype, evaluatePhenotype)
+	if err := gaInstance.Initialize(populationSize, initializeGenotype, evaluatePhenotype); err != nil {
+		fmt.Printf("Error initializing GA: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Set a termination condition based on fitness threshold
 	gaInstance.TermCondition = ga.FitnessThresholdTermination(2.0) // f(x) = x*sin(x) has a maximum of ~2.0 around x = π/2
