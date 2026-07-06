@@ -197,6 +197,12 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Result, err
 	if bestIndividual == nil {
 		return nil, fmt.Errorf("initial population contains no valid individuals")
 	}
+	// Clone so the all-time best is decoupled from the live population. Without
+	// this, gen-0's best can be selected, aliased into offspring via crossover's
+	// pass-through branch, mutated in place, and returned as Result.Best with a
+	// Genome that no longer matches its reported Fitness. The improvement path
+	// below clones for the same reason.
+	bestIndividual = ga.cloneIndividual(bestIndividual)
 
 	bestFitness := bestIndividual.Phenotype.Fitness
 	noImprovementCount := 0
