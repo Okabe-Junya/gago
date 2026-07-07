@@ -667,6 +667,76 @@ func TestResultBestNotAliasedToPopulation(t *testing.T) {
 	}
 }
 
+// TestResultInitialBestClonedAtStart is a regression test for a defect where
+// the all-time best was captured by reference at initialization instead of
+// being cloned. When gen-0's best is never improved upon, that live pointer
+// could be selected, aliased into offspring, mutated in place, and returned as
+// Result.Best with a genome no longer matching its reported fitness.
+//
+// Identity selection and pass-through crossover force every individual —
+// including gen-0's best — to be aliased into the offspring and then mutated in
+// place, so the defect reproduces deterministically regardless of the RNG.
+func TestResultInitialBestClonedAtStart(t *testing.T) {
+	const genomeLength = 8
+
+	identitySelection := func(p []*Individual, rng *rand.Rand) []*Individual {
+		selected := make([]*Individual, len(p))
+		copy(selected, p)
+		return selected
+	}
+	passthroughCrossover := func(p []*Individual, rate float64, rng *rand.Rand) []*Individual {
+		offspring := make([]*Individual, len(p))
+		copy(offspring, p)
+		return offspring
+	}
+	evalFunc := func(g *Genotype) *Phenotype {
+		f := 0.0
+		for _, b := range g.Genome {
+			if b == 1 {
+				f++
+			}
+		}
+		return &Phenotype{Fitness: f}
+	}
+	// Every individual starts all-ones (the unbeatable maximum); a mutation rate
+	// of 1.0 flips every bit, degrading any in-place-mutated alias to fitness 0.
+	initFunc := func(rng *rand.Rand) *Genotype {
+		g := NewBinaryGenotype(genomeLength)
+		for i := range g.Genome {
+			g.Genome[i] = 1
+		}
+		return g
+	}
+
+	gaInstance := &GA{
+		Selection:     identitySelection,
+		Crossover:     passthroughCrossover,
+		Mutation:      BitFlipMutation,
+		CrossoverRate: 1.0,
+		MutationRate:  1.0,
+		Generations:   1,
+		Seed:          1,
+	}
+	if err := gaInstance.Initialize(10, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	result, err := gaInstance.Evolve(evalFunc)
+	if err != nil {
+		t.Fatalf("Evolve failed: %v", err)
+	}
+
+	// Post-fix the initial best is a clone immune to in-place mutation, so it
+	// retains the all-ones genome and fitness genomeLength.
+	if result.Best.Phenotype.Fitness != float64(genomeLength) {
+		t.Errorf("Result.Best.Fitness = %f, want %d (initial best was aliased and mutated)", result.Best.Phenotype.Fitness, genomeLength)
+	}
+	computed := evalFunc(result.Best.Genotype)
+	if computed.Fitness != result.Best.Phenotype.Fitness {
+		t.Errorf("Result.Best genome does not match reported fitness: declared %f, recomputed %f", result.Best.Phenotype.Fitness, computed.Fitness)
+	}
+}
+
 // makeOneMaxGA returns a GA configured for the OneMax problem; used by the
 // EarlyStopping / OnGeneration tests below.
 func makeOneMaxGA(t *testing.T, generations int) (*GA, func(*Genotype) *Phenotype) {

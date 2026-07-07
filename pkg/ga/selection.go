@@ -36,6 +36,25 @@ func TournamentSelection(population []*Individual, tournamentSize int, rng *rand
 	return selected
 }
 
+// isUsableTotalWeight reports whether a total weight is a finite, strictly
+// positive number, i.e. usable as a denominator for proportional selection.
+// Non-positive totals (e.g. all-negative fitness used for minimization) or
+// non-finite totals (NaN/Inf) make proportional selection undefined.
+func isUsableTotalWeight(total float64) bool {
+	return total > 0 && !math.IsInf(total, 1)
+}
+
+// uniformSelection returns len(population) individuals chosen uniformly at
+// random with replacement. Used as a fallback when proportional selection is
+// undefined so the returned slice never contains nil entries.
+func uniformSelection(population []*Individual, rng *rand.Rand) []*Individual {
+	selected := make([]*Individual, len(population))
+	for i := range selected {
+		selected[i] = population[rng.Intn(len(population))]
+	}
+	return selected
+}
+
 // RouletteWheelSelection implements roulette wheel selection for selecting individuals.
 // The probability of selection is proportional to the individual's fitness.
 func RouletteWheelSelection(population []*Individual, rng *rand.Rand) []*Individual {
@@ -49,6 +68,12 @@ func RouletteWheelSelection(population []*Individual, rng *rand.Rand) []*Individ
 		totalFitness += ind.Phenotype.Fitness
 	}
 
+	// Proportional selection is only defined for a positive, finite total.
+	// Fall back to uniform selection to avoid nil entries in the result.
+	if !isUsableTotalWeight(totalFitness) {
+		return uniformSelection(population, rng)
+	}
+
 	// Create cumulative fitness array
 	cumulativeFitness := make([]float64, len(population))
 	cumulativeFitness[0] = population[0].Phenotype.Fitness / totalFitness
@@ -60,6 +85,10 @@ func RouletteWheelSelection(population []*Individual, rng *rand.Rand) []*Individ
 	selected := make([]*Individual, len(population))
 	for i := range selected {
 		r := rng.Float64()
+		// Default to the last bucket: floating-point rounding can leave the
+		// final cumulative value just below r, which would otherwise leave
+		// this slot nil.
+		selected[i] = population[len(population)-1]
 		for j, cumFitness := range cumulativeFitness {
 			if r <= cumFitness {
 				selected[i] = population[j]
@@ -111,6 +140,9 @@ func RankSelection(population []*Individual, rng *rand.Rand) []*Individual {
 	selected := make([]*Individual, len(population))
 	for i := range selected {
 		r := rng.Float64()
+		// Default to the last bucket to guard against floating-point rounding
+		// leaving the final cumulative probability just below r.
+		selected[i] = sorted[len(sorted)-1]
 		for j, prob := range probabilities {
 			if r <= prob {
 				selected[i] = sorted[j]
@@ -134,11 +166,20 @@ func RankSelection(population []*Individual, rng *rand.Rand) []*Individual {
 // - A new population of selected individuals.
 func StochasticUniversalSamplingSelection(population []*Individual, rng *rand.Rand) []*Individual {
 	n := len(population)
+	if n == 0 {
+		return nil
+	}
 	selected := make([]*Individual, n)
 	totalFitness := 0.0
 
 	for _, ind := range population {
 		totalFitness += ind.Phenotype.Fitness
+	}
+
+	// SUS requires a positive, finite total; otherwise fall back to uniform
+	// selection to avoid nil entries in the result.
+	if !isUsableTotalWeight(totalFitness) {
+		return uniformSelection(population, rng)
 	}
 
 	// Calculate the distance between the pointers
@@ -151,6 +192,9 @@ func StochasticUniversalSamplingSelection(population []*Individual, rng *rand.Ra
 	for i := range selected {
 		pointer := start + float64(i)*distance
 		current := 0.0
+		// Default to the last individual so floating-point rounding on the
+		// final pointer cannot leave this slot nil.
+		selected[i] = population[n-1]
 		for _, ind := range population {
 			current += ind.Phenotype.Fitness
 			if current > pointer {
@@ -218,6 +262,9 @@ func TruncationSelection(population []*Individual, truncationThreshold float64) 
 // - A new population of selected individuals.
 func BoltzmannSelection(population []*Individual, temperature float64, rng *rand.Rand) []*Individual {
 	n := len(population)
+	if n == 0 {
+		return nil
+	}
 	selected := make([]*Individual, n)
 
 	// Calculate Boltzmann probabilities
@@ -230,11 +277,21 @@ func BoltzmannSelection(population []*Individual, temperature float64, rng *rand
 		totalBoltzmann += boltzmannValues[i]
 	}
 
+	// math.Exp can overflow to +Inf (or a non-positive temperature can yield
+	// NaN); fall back to uniform selection when the total weight is unusable
+	// to avoid nil entries in the result.
+	if !isUsableTotalWeight(totalBoltzmann) {
+		return uniformSelection(population, rng)
+	}
+
 	// Perform selection based on Boltzmann probabilities
 	for i := range selected {
 		pick := rng.Float64() * totalBoltzmann
 		current := 0.0
 
+		// Default to the last individual so floating-point rounding cannot
+		// leave this slot nil.
+		selected[i] = population[n-1]
 		for j, ind := range population {
 			current += boltzmannValues[j]
 			if current > pick {
