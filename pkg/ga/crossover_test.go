@@ -3,6 +3,7 @@ package ga
 import (
 	"math/rand"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -247,6 +248,77 @@ func TestCycleCrossoverPreservesPermutation(t *testing.T) {
 		}
 		assertIsPermutation(t, "CX child1", offspring[0].Genotype.Genome)
 		assertIsPermutation(t, "CX child2", offspring[1].Genotype.Genome)
+	}
+}
+
+// oddPopulation builds a population of the given odd size where every
+// individual is a valid permutation of [0, genomeLen), so it is usable by both
+// the binary/point crossovers and the permutation crossovers (OX1, PMX, CX).
+func oddPopulation(size, genomeLen int, rng *rand.Rand) []*Individual {
+	population := make([]*Individual, size)
+	for i := range population {
+		population[i] = &Individual{Genotype: NewPermutationGenotype(genomeLen, rng)}
+	}
+	return population
+}
+
+// TestCrossoverOddPopulationNoNilTail is the regression test for the odd-sized
+// population bug: the pairwise crossover loop only filled indices
+// [0, 2*(len/2)), leaving offspring[len-1] nil for odd populations, which
+// panicked downstream (mutation) on a nil *Individual. Every returned slot must
+// be a fully-formed individual.
+func TestCrossoverOddPopulationNoNilTail(t *testing.T) {
+	t.Parallel()
+
+	const genomeLen = 6
+
+	crossovers := []struct {
+		name string
+		fn   func([]*Individual, float64, *rand.Rand) []*Individual
+	}{
+		{"SinglePointCrossover", SinglePointCrossover},
+		{"UniformCrossover", UniformCrossover},
+		{"MultiPointCrossover", func(p []*Individual, r float64, rng *rand.Rand) []*Individual {
+			return MultiPointCrossover(p, r, 2, rng)
+		}},
+		{"TwoPointCrossover", TwoPointCrossover},
+		{"OrderBasedCrossover", OrderBasedCrossover},
+		{"PMXCrossover", PMXCrossover},
+		{"CycleCrossover", CycleCrossover},
+	}
+
+	sizes := []int{3, 5}
+
+	for _, cx := range crossovers {
+		cx := cx
+		t.Run(cx.name, func(t *testing.T) {
+			t.Parallel()
+			for _, size := range sizes {
+				size := size
+				t.Run("size="+strconv.Itoa(size), func(t *testing.T) {
+					t.Parallel()
+					rng := rand.New(rand.NewSource(int64(size)))
+					population := oddPopulation(size, genomeLen, rng)
+
+					offspring := cx.fn(population, 1.0, rng)
+
+					if len(offspring) != size {
+						t.Fatalf("expected %d offspring, got %d", size, len(offspring))
+					}
+					for i, ind := range offspring {
+						if ind == nil {
+							t.Fatalf("offspring[%d] is nil", i)
+						}
+						if ind.Genotype == nil {
+							t.Fatalf("offspring[%d].Genotype is nil", i)
+						}
+						if got := len(ind.Genotype.Genome); got != genomeLen {
+							t.Fatalf("offspring[%d] genome length = %d, want %d", i, got, genomeLen)
+						}
+					}
+				})
+			}
+		})
 	}
 }
 

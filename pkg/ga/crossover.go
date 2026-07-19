@@ -7,6 +7,18 @@ import (
 	"sort"
 )
 
+// carryOverOddTail copies the final unpaired individual into the offspring when
+// the population size is odd. The pairwise crossover loops only fill indices
+// [0, 2*(len(population)/2)), so for an odd population the last slot would
+// otherwise remain nil and cause a nil dereference in downstream operators
+// (e.g. mutation). This preserves crossover semantics for even populations.
+func carryOverOddTail(offspring, population []*Individual) {
+	if len(population)%2 == 1 {
+		last := len(population) - 1
+		offspring[last] = population[last]
+	}
+}
+
 // SinglePointCrossover performs a single-point crossover on the given population.
 //
 // In single-point crossover, a random crossover point is selected, and the
@@ -39,6 +51,7 @@ func SinglePointCrossover(population []*Individual, crossoverRate float64, rng *
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -78,6 +91,7 @@ func UniformCrossover(population []*Individual, crossoverRate float64, rng *rand
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -153,6 +167,7 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -198,6 +213,7 @@ func TwoPointCrossover(population []*Individual, crossoverRate float64, rng *ran
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -248,6 +264,7 @@ func OrderBasedCrossover(population []*Individual, crossoverRate float64, rng *r
 		}
 	}
 
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -326,6 +343,7 @@ func PMXCrossover(population []*Individual, crossoverRate float64, rng *rand.Ran
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
@@ -400,6 +418,7 @@ func CycleCrossover(population []*Individual, crossoverRate float64, rng *rand.R
 			offspring[2*i+1] = population[2*i+1]
 		}
 	}
+	carryOverOddTail(offspring, population)
 	return offspring
 }
 
