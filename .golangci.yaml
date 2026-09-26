@@ -3,16 +3,11 @@ run:
   timeout: "20m"
   allow-parallel-runners: true
 linters:
-  default: none
+  default: standard
   enable:
     - bodyclose
-    - errcheck
     - gocritic
-    - govet
-    - ineffassign
     - noctx
-    - staticcheck
-    - unused
   settings:
     govet:
       disable:
