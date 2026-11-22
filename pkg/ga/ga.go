@@ -359,7 +359,7 @@ func (ga *GA) advanceGeneration(
 
 func (ga *GA) snapshotElites(elites []*Individual) []*Individual {
 	if ga.ElitismCount <= 0 {
-		return elites
+		return elites[:0]
 	}
 
 	ga.Population.SortByFitness()

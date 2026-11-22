@@ -857,3 +857,52 @@ func TestOnGenerationCallback(t *testing.T) {
 		}
 	}
 }
+
+// TestElitismDisabledMidRunStopsReinsertion guards against reinserting the
+// last elite snapshot after ElitismCount drops to 0 during a run. Selection
+// clones and mutation stamps every gene with the generation number, so any
+// individual still carrying an older stamp is a stale elite.
+func TestElitismDisabledMidRunStopsReinsertion(t *testing.T) {
+	const generations = 3
+
+	stamp := byte(0)
+	gaInstance := &GA{
+		Selection: func(p []*Individual, _ *rand.Rand) []*Individual {
+			out := make([]*Individual, len(p))
+			for i, ind := range p {
+				out[i] = ind.Clone()
+			}
+
+			return out
+		},
+		Crossover: func(p []*Individual, _ float64, _ *rand.Rand) []*Individual { return p },
+		Mutation: func(p []*Individual, _ float64, _ *rand.Rand) {
+			stamp++
+			for _, ind := range p {
+				ind.Genotype.Genome[0] = stamp
+			}
+		},
+		Generations:      generations,
+		ElitismCount:     2,
+		NumParallelEvals: 1,
+		Seed:             1,
+	}
+	gaInstance.OnGeneration = func(_ int, _ *Statistics) { gaInstance.ElitismCount = 0 }
+
+	evalFunc := func(g *Genotype) *Phenotype { return &Phenotype{Fitness: float64(g.Genome[0])} }
+	initFunc := func(_ *rand.Rand) *Genotype { return NewBinaryGenotype(1) }
+
+	if err := gaInstance.Initialize(6, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	if _, err := gaInstance.Evolve(evalFunc); err != nil {
+		t.Fatalf("Evolve: %v", err)
+	}
+
+	for i, ind := range gaInstance.Population.Individuals {
+		if got := ind.Genotype.Genome[0]; got != generations {
+			t.Errorf("individual %d carries stamp %d, want %d (stale elite reinserted)", i, got, generations)
+		}
+	}
+}
