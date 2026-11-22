@@ -3,40 +3,72 @@ run:
   timeout: "20m"
   allow-parallel-runners: true
 linters:
-  default: standard
-  enable:
-    - bodyclose
-    - gocritic
-    - noctx
+  default: all
+  disable:
+    # Deprecated; superseded by gomodguard_v2, which stays enabled.
+    - gomodguard
+    # Requires every field in struct literals; relying on zero values (ga.GA{...}) is idiomatic.
+    - exhaustruct
+    - exhaustruct_v5
+    # Blank-line placement beyond gofmt is a style opinion; their fixes split related statements apart.
+    - nlreturn
+    - wsl
+    - wsl_v5
+    # Forbids `if err := f(); err != nil`, the idiomatic way to scope err to its check.
+    - noinlineerr
+    # Termination constructors return ga.TerminationCondition by design so they compose;
+    # returning concrete types would change the exported API.
+    - ireturn
+    # Tests are white-box and exercise unexported helpers.
+    - testpackage
+    # Short names in short scopes (i, rng, ind) are idiomatic Go.
+    - varnamelen
+    # Subtests mutate shared fixtures in sequence (TestDiversityStagnationTermination) and
+    # TestTimeBasedTermination swaps the package-level clock, so they must not run in parallel.
+    - paralleltest
   settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $gostd
+            - github.com/Okabe-Junya/gago
     govet:
-      disable:
-        - shadow
       enable-all: true
-    staticcheck:
-      checks:
-        - -SA1006
+    gosec:
+      excludes:
+        # Duplicates errcheck, which also knows calls such as (*rand.Rand).Read never fail.
+        - G104
+        # A GA needs a fast, seedable PRNG for reproducible runs; crypto/rand is neither.
+        - G404
+    mnd:
+      ignored-numbers:
+        # Halves and pairs are self-describing in GA code (coin flips, pairwise crossover, n(n+1)/2).
+        - "0.5"
+        - "2"
   exclusions:
     generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
     rules:
-      - linters:
-          - errcheck
-          - govet
-          - noctx
-        path: _test\.go
-    paths:
-      - third_party$
-      - builtin$
+      # Examples are CLI programs: printing results and inline hyperparameters are their point.
+      - path: ^examples/
+        linters:
+          - forbidigo
+          - gochecknoglobals
+          - mnd
+      # Fixtures convert values that are bounded by construction, such as rng.Intn(2).
+      - path: (_test\.go|^examples/)
+        linters:
+          - gosec
+        text: G115
+      # Table-driven tests grow long, branchy, and repetitive by nature.
+      - path: _test\.go
+        linters:
+          - cyclop
+          - funlen
+          - gocognit
+          - goconst
 formatters:
   enable:
     - goimports
   exclusions:
     generated: lax
-    paths:
-      - third_party$
-      - builtin$

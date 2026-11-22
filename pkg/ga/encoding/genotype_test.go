@@ -42,7 +42,7 @@ func TestNewIntegerGenotype(t *testing.T) {
 		t.Fatalf("Expected genome type IntegerEncoding, but got %v", genotype.GenomeType)
 	}
 
-	for i := 0; i < genomeLength; i++ {
+	for i := range genomeLength {
 		value, err := genotype.GetIntegerValue(i)
 		if err != nil {
 			t.Errorf("Failed to get integer value at position %d: %v", i, err)
@@ -92,7 +92,7 @@ func TestNewRealGenotype(t *testing.T) {
 		t.Fatalf("Expected genome type RealEncoding, but got %v", genotype.GenomeType)
 	}
 
-	for i := 0; i < genomeLength; i++ {
+	for i := range genomeLength {
 		value, err := genotype.GetRealValue(i)
 		if err != nil {
 			t.Errorf("Failed to get real value at position %d: %v", i, err)
@@ -129,7 +129,7 @@ func TestNewPermutationGenotype(t *testing.T) {
 		valueCounts[value]++
 	}
 
-	for i := 0; i < size; i++ {
+	for i := range size {
 		if count, exists := valueCounts[i]; !exists || count != 1 {
 			t.Errorf("Value %d appears %d times in permutation, expected exactly once", i, count)
 		}
@@ -176,7 +176,7 @@ func TestGetSetRealValue(t *testing.T) {
 		t.Errorf("Value should be clamped to min, got %f", v0)
 	}
 
-	if err := genotype.SetRealValue(1, 20.0); err != nil { // Above max
+	if err = genotype.SetRealValue(1, 20.0); err != nil { // Above max
 		t.Errorf("Failed to set real value 20.0 at position 1: %v", err)
 	}
 

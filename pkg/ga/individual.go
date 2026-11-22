@@ -1,10 +1,18 @@
-// Package ga provides functionalities for implementing genetic algorithms,
-// including the definitions and operations related to individuals in the population.
 package ga
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"math/rand"
+)
+
+var (
+	errNotBinaryGenome      = errors.New("GetBinaryValue called on non-binary encoded genome")
+	errNotIntegerGenome     = errors.New("GetIntegerValue called on non-integer encoded genome")
+	errNotRealGenome        = errors.New("GetRealValue called on non-real encoded genome")
+	errNotPermutationGenome = errors.New("GetPermutation called on non-permutation encoded genome")
+	errPositionOutOfBounds  = errors.New("position out of bounds")
 )
 
 // GenomeType represents the type of genome encoding.
@@ -80,18 +88,10 @@ func NewRealGenotype(genomeLength int, minValues, maxValues []float64, rng *rand
 		MaxValues:  make([]float64, genomeLength),
 	}
 
-	// Initialize with random values
 	for i := range genotype.Genome {
-		minIdx := i % len(minValues)
-		maxIdx := i % len(maxValues)
-		min := minValues[minIdx]
-		max := maxValues[maxIdx]
-		genotype.MinValues[i] = min
-		genotype.MaxValues[i] = max
-
-		// Store the normalized value as a byte.
-		normalizedValue := rng.Float64()
-		genotype.Genome[i] = byte(255 * normalizedValue)
+		genotype.MinValues[i] = minValues[i%len(minValues)]
+		genotype.MaxValues[i] = maxValues[i%len(maxValues)]
+		genotype.Genome[i] = byte(math.MaxUint8 * rng.Float64())
 	}
 
 	return genotype
@@ -126,7 +126,13 @@ func NewPhenotype(fitness float64) *Phenotype {
 }
 
 // MutateReal mutates a real-valued genotype by adding Gaussian noise.
-func MutateReal(genotype *Genotype, minValues, maxValues []float64, mutationRate float64, sigma float64, rng *rand.Rand) {
+func MutateReal(
+	genotype *Genotype,
+	minValues, maxValues []float64,
+	mutationRate float64,
+	sigma float64,
+	rng *rand.Rand,
+) {
 	if genotype == nil || len(genotype.Genome) == 0 {
 		return
 	}
@@ -158,41 +164,16 @@ func (ind *Individual) Clone() *Individual {
 		return nil
 	}
 
-	// クローンGenome
-	genomeClone := make([]byte, len(ind.Genotype.Genome))
-	copy(genomeClone, ind.Genotype.Genome)
-
-	// クローンMinValues（もし存在すれば）
-	var minValuesClone []float64
-	if len(ind.Genotype.MinValues) > 0 {
-		minValuesClone = make([]float64, len(ind.Genotype.MinValues))
-		copy(minValuesClone, ind.Genotype.MinValues)
-	}
-
-	// クローンMaxValues（もし存在すれば）
-	var maxValuesClone []float64
-	if len(ind.Genotype.MaxValues) > 0 {
-		maxValuesClone = make([]float64, len(ind.Genotype.MaxValues))
-		copy(maxValuesClone, ind.Genotype.MaxValues)
-	}
-
-	// クローンFeatures
-	var featuresClone []float64
-	if len(ind.Phenotype.Features) > 0 {
-		featuresClone = make([]float64, len(ind.Phenotype.Features))
-		copy(featuresClone, ind.Phenotype.Features)
-	}
-
 	return &Individual{
 		Genotype: &Genotype{
-			Genome:     genomeClone,
-			MinValues:  minValuesClone,
-			MaxValues:  maxValuesClone,
+			Genome:     append([]byte(nil), ind.Genotype.Genome...),
+			MinValues:  cloneNonEmpty(ind.Genotype.MinValues),
+			MaxValues:  cloneNonEmpty(ind.Genotype.MaxValues),
 			GenomeType: ind.Genotype.GenomeType,
 		},
 		Phenotype: &Phenotype{
 			Fitness:  ind.Phenotype.Fitness,
-			Features: featuresClone,
+			Features: cloneNonEmpty(ind.Phenotype.Features),
 		},
 	}
 }
@@ -226,49 +207,51 @@ func findBestIndividual(population []*Individual) *Individual {
 // GetBinaryValue returns the binary value (0 or 1) at the specified position.
 func (g *Genotype) GetBinaryValue(position int) (int, error) {
 	if g.GenomeType != BinaryEncoding {
-		return 0, fmt.Errorf("GetBinaryValue called on non-binary encoded genome")
+		return 0, errNotBinaryGenome
 	}
-	if position < 0 || position >= len(g.Genome) {
-		return 0, fmt.Errorf("position out of bounds: %d", position)
+
+	if err := g.checkPosition(position); err != nil {
+		return 0, err
 	}
+
 	return int(g.Genome[position]), nil
 }
 
 // GetIntegerValue returns the integer value at the specified position.
 func (g *Genotype) GetIntegerValue(position int) (int, error) {
 	if g.GenomeType != IntegerEncoding {
-		return 0, fmt.Errorf("GetIntegerValue called on non-integer encoded genome")
-	}
-	if position < 0 || position >= len(g.Genome) {
-		return 0, fmt.Errorf("position out of bounds: %d", position)
+		return 0, errNotIntegerGenome
 	}
 
-	min := int(g.MinValues[position])
-	max := int(g.MaxValues[position])
-	rangeValue := max - min + 1
+	if err := g.checkPosition(position); err != nil {
+		return 0, err
+	}
 
-	// Map the byte value (0-255) to the specified integer range
-	return min + (int(g.Genome[position])*rangeValue)/256, nil
+	lo := int(g.MinValues[position])
+	hi := int(g.MaxValues[position])
+
+	return lo + (int(g.Genome[position])*(hi-lo+1))/(math.MaxUint8+1), nil
 }
 
 // GetRealValue returns the real value at the specified position.
 func (g *Genotype) GetRealValue(position int) (float64, error) {
 	if g.GenomeType != RealEncoding {
-		return 0, fmt.Errorf("GetRealValue called on non-real encoded genome")
-	}
-	if position < 0 || position >= len(g.Genome) {
-		return 0, fmt.Errorf("position out of bounds: %d", position)
+		return 0, errNotRealGenome
 	}
 
-	// Convert the byte (0-255) back to the original range
-	normalizedValue := float64(g.Genome[position]) / 255.0
+	if err := g.checkPosition(position); err != nil {
+		return 0, err
+	}
+
+	normalizedValue := float64(g.Genome[position]) / math.MaxUint8
+
 	return g.MinValues[position] + normalizedValue*(g.MaxValues[position]-g.MinValues[position]), nil
 }
 
 // GetPermutation returns the entire permutation as a slice of integers.
 func (g *Genotype) GetPermutation() ([]int, error) {
 	if g.GenomeType != PermutationEncoding {
-		return nil, fmt.Errorf("GetPermutation called on non-permutation encoded genome")
+		return nil, errNotPermutationGenome
 	}
 
 	result := make([]int, len(g.Genome))
@@ -276,4 +259,12 @@ func (g *Genotype) GetPermutation() ([]int, error) {
 		result[i] = int(v)
 	}
 	return result, nil
+}
+
+func (g *Genotype) checkPosition(position int) error {
+	if position < 0 || position >= len(g.Genome) {
+		return fmt.Errorf("%w: %d", errPositionOutOfBounds, position)
+	}
+
+	return nil
 }

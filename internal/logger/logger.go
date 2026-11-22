@@ -29,11 +29,11 @@ type Logger struct {
 	level  LogLevel
 }
 
-// LoggerOption is a function that configures a Logger.
-type LoggerOption func(*Logger)
+// Option is a function that configures a Logger.
+type Option func(*Logger)
 
 // NewLogger creates a new logger with the specified options.
-func NewLogger(enabled bool, options ...LoggerOption) *Logger {
+func NewLogger(enabled bool, options ...Option) *Logger {
 	if !enabled {
 		return nil
 	}
@@ -55,7 +55,7 @@ func NewLogger(enabled bool, options ...LoggerOption) *Logger {
 }
 
 // WithLevel sets the logging level.
-func WithLevel(level LogLevel) LoggerOption {
+func WithLevel(level LogLevel) Option {
 	return func(l *Logger) {
 		l.level = level
 		var slogLevel slog.Level
@@ -87,7 +87,7 @@ func WithLevel(level LogLevel) LoggerOption {
 }
 
 // WithJSON sets the logger to use JSON format.
-func WithJSON() LoggerOption {
+func WithJSON() Option {
 	return func(l *Logger) {
 		handlerOptions := &slog.HandlerOptions{
 			Level: slogLevelFromLogLevel(l.level),
@@ -97,7 +97,7 @@ func WithJSON() LoggerOption {
 }
 
 // WithWriter sets the writer for the logger.
-func WithWriter(w io.Writer) LoggerOption {
+func WithWriter(w io.Writer) Option {
 	return func(l *Logger) {
 		handlerOptions := &slog.HandlerOptions{
 			Level: slogLevelFromLogLevel(l.level),
@@ -174,7 +174,7 @@ func (l *Logger) WithGroup(name string) *Logger {
 }
 
 // LogGenerationStats logs statistics about a generation.
-func (l *Logger) LogGenerationStats(generation int, stats map[string]interface{}, elapsed time.Duration) {
+func (l *Logger) LogGenerationStats(generation int, stats map[string]any, elapsed time.Duration) {
 	if l == nil || l.logger == nil {
 		return
 	}
@@ -210,7 +210,7 @@ func (l *Logger) LogError(err error, msg string, args ...any) {
 	l.logger.Error(msg, allArgs...)
 }
 
-// slogLevelFromLogLevel converts LogLevel to slog.Level
+// slogLevelFromLogLevel converts LogLevel to slog.Level.
 func slogLevelFromLogLevel(level LogLevel) slog.Level {
 	switch level {
 	case LevelDebug:

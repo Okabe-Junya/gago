@@ -41,10 +41,13 @@ func TestSinglePointCrossover(t *testing.T) {
 			t.Fatalf("Expected offspring length %d, but got %d", tc.expectedLength, len(offspring))
 		}
 
-		for i := 0; i < len(tc.population)/2; i++ {
-			if tc.crossoverRate == 1.0 && reflect.DeepEqual(offspring[2*i], tc.population[2*i]) && reflect.DeepEqual(offspring[2*i+1], tc.population[2*i+1]) {
+		for i := range len(tc.population) / 2 {
+			pairUnchanged := reflect.DeepEqual(offspring[2*i], tc.population[2*i]) &&
+				reflect.DeepEqual(offspring[2*i+1], tc.population[2*i+1])
+
+			if tc.crossoverRate == 1.0 && pairUnchanged {
 				t.Errorf("Expected crossover to occur, but no crossover happened for pair %d", i)
-			} else if tc.crossoverRate == 0.0 && (!reflect.DeepEqual(offspring[2*i], tc.population[2*i]) || !reflect.DeepEqual(offspring[2*i+1], tc.population[2*i+1])) {
+			} else if tc.crossoverRate == 0.0 && !pairUnchanged {
 				t.Errorf("Expected no crossover to occur, but crossover happened for pair %d", i)
 			}
 		}
@@ -92,7 +95,7 @@ func TestUniformCrossover(t *testing.T) {
 
 		// Try multiple attempts to make the test deterministic
 		anyCrossoverOccurred := false
-		for attempt := 0; attempt < 10; attempt++ {
+		for range 10 {
 			// Reset test case individuals
 			for i, ind := range tc.population {
 				ind.Genotype.Genome = append([]byte(nil), original[i].Genotype.Genome...)
@@ -106,7 +109,7 @@ func TestUniformCrossover(t *testing.T) {
 
 			if tc.crossoverRate > 0.0 {
 				// Check if crossover occurred in at least one pair
-				for i := 0; i < len(tc.population)/2; i++ {
+				for i := range len(tc.population) / 2 {
 					if !reflect.DeepEqual(offspring[2*i], tc.population[2*i]) ||
 						!reflect.DeepEqual(offspring[2*i+1], tc.population[2*i+1]) {
 						anyCrossoverOccurred = true
@@ -125,7 +128,7 @@ func TestUniformCrossover(t *testing.T) {
 		} else if tc.crossoverRate == 0.0 {
 			// Crossover rate of 0 should yield identical offspring
 			offspring := UniformCrossover(tc.population, tc.crossoverRate, rng)
-			for i := 0; i < len(tc.population); i++ {
+			for i := range len(tc.population) {
 				if !reflect.DeepEqual(offspring[i], tc.population[i]) {
 					t.Errorf("Expected no crossover to occur, but crossover happened for individual %d", i)
 				}
@@ -140,7 +143,7 @@ func permutationPair(t *testing.T, n int) []*Individual {
 	t.Helper()
 	p1 := make([]byte, n)
 	p2 := make([]byte, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p1[i] = byte(i)
 		p2[i] = byte(n - 1 - i)
 	}
@@ -214,7 +217,7 @@ func TestTwoPointCrossover(t *testing.T) {
 // permutation of [0, n) when both parents are.
 func TestOrderBasedCrossoverPreservesPermutation(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 50; trial++ {
+	for trial := range 50 {
 		population := permutationPair(t, 20)
 		offspring := OrderBasedCrossover(population, 1.0, rng)
 		if len(offspring) != 2 {
@@ -227,7 +230,7 @@ func TestOrderBasedCrossoverPreservesPermutation(t *testing.T) {
 
 func TestPMXCrossoverPreservesPermutation(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 50; trial++ {
+	for trial := range 50 {
 		population := permutationPair(t, 20)
 		offspring := PMXCrossover(population, 1.0, rng)
 		if len(offspring) != 2 {
@@ -240,7 +243,7 @@ func TestPMXCrossoverPreservesPermutation(t *testing.T) {
 
 func TestCycleCrossoverPreservesPermutation(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 50; trial++ {
+	for trial := range 50 {
 		population := permutationPair(t, 20)
 		offspring := CycleCrossover(population, 1.0, rng)
 		if len(offspring) != 2 {
@@ -273,28 +276,26 @@ func TestCrossoverOddPopulationNoNilTail(t *testing.T) {
 	const genomeLen = 6
 
 	crossovers := []struct {
-		name string
 		fn   func([]*Individual, float64, *rand.Rand) []*Individual
+		name string
 	}{
-		{"SinglePointCrossover", SinglePointCrossover},
-		{"UniformCrossover", UniformCrossover},
-		{"MultiPointCrossover", func(p []*Individual, r float64, rng *rand.Rand) []*Individual {
+		{name: "SinglePointCrossover", fn: SinglePointCrossover},
+		{name: "UniformCrossover", fn: UniformCrossover},
+		{name: "MultiPointCrossover", fn: func(p []*Individual, r float64, rng *rand.Rand) []*Individual {
 			return MultiPointCrossover(p, r, 2, rng)
 		}},
-		{"TwoPointCrossover", TwoPointCrossover},
-		{"OrderBasedCrossover", OrderBasedCrossover},
-		{"PMXCrossover", PMXCrossover},
-		{"CycleCrossover", CycleCrossover},
+		{name: "TwoPointCrossover", fn: TwoPointCrossover},
+		{name: "OrderBasedCrossover", fn: OrderBasedCrossover},
+		{name: "PMXCrossover", fn: PMXCrossover},
+		{name: "CycleCrossover", fn: CycleCrossover},
 	}
 
 	sizes := []int{3, 5}
 
 	for _, cx := range crossovers {
-		cx := cx
 		t.Run(cx.name, func(t *testing.T) {
 			t.Parallel()
 			for _, size := range sizes {
-				size := size
 				t.Run("size="+strconv.Itoa(size), func(t *testing.T) {
 					t.Parallel()
 					rng := rand.New(rand.NewSource(int64(size)))

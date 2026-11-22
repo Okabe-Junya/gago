@@ -1,6 +1,8 @@
 package termination
 
 import (
+	"slices"
+
 	"github.com/Okabe-Junya/gago/pkg/ga"
 )
 
@@ -30,7 +32,10 @@ type CompositeTermination struct {
 //
 // Returns:
 //   - A TerminationCondition that combines the provided conditions according to the operator.
-func NewCompositeTermination(operator CompositeOperator, conditions ...ga.TerminationCondition) ga.TerminationCondition {
+func NewCompositeTermination(
+	operator CompositeOperator,
+	conditions ...ga.TerminationCondition,
+) ga.TerminationCondition {
 	// Filter out nil conditions
 	validConditions := make([]ga.TerminationCondition, 0, len(conditions))
 	for _, cond := range conditions {
@@ -47,30 +52,20 @@ func NewCompositeTermination(operator CompositeOperator, conditions ...ga.Termin
 
 // Evaluate implements the TerminationCondition interface.
 // It evaluates all the contained conditions according to the composite operator.
-func (ct *CompositeTermination) Evaluate(ga *ga.GA) bool {
-	if ct == nil || len(ct.conditions) == 0 || ga == nil {
+func (ct *CompositeTermination) Evaluate(g *ga.GA) bool {
+	if ct == nil || len(ct.conditions) == 0 || g == nil {
 		return false
 	}
 
+	met := func(condition ga.TerminationCondition) bool { return condition.Evaluate(g) }
+
 	switch ct.operator {
 	case AnyTermination:
-		// Return true if any condition is met (logical OR)
-		for _, condition := range ct.conditions {
-			if condition.Evaluate(ga) {
-				return true
-			}
-		}
-		return false
-
+		return slices.ContainsFunc(ct.conditions, met)
 	case AllTermination:
-		// Return true only if all conditions are met (logical AND)
-		for _, condition := range ct.conditions {
-			if !condition.Evaluate(ga) {
-				return false
-			}
-		}
-		return true
-
+		return !slices.ContainsFunc(ct.conditions, func(condition ga.TerminationCondition) bool {
+			return !met(condition)
+		})
 	default:
 		return false
 	}

@@ -15,10 +15,11 @@ func TestGenerationCountTermination(t *testing.T) {
 	}
 
 	// Add history entries (simulating generations)
-	for i := 0; i < maxGenerations-1; i++ {
+	for i := range maxGenerations - 1 {
 		ga.History = append(ga.History, &Statistics{})
 		if termCondition.Evaluate(ga) {
-			t.Errorf("Termination condition returned true after %d generations, expected false until %d generations", i+1, maxGenerations)
+			t.Errorf("Termination condition returned true after %d generations, expected false until %d generations",
+				i+1, maxGenerations)
 		}
 	}
 
@@ -44,9 +45,9 @@ func TestConvergenceTermination(t *testing.T) {
 	for _, fitness := range fitnessValues {
 		ga.History = append(ga.History, &Statistics{BestFitness: fitness})
 
-		// Should only return true when we've had noImprovementGens with less than improvementThreshold improvement
+		last := len(ga.History) - 1
 		shouldTerminate := len(ga.History) > noImprovementGens &&
-			(ga.History[len(ga.History)-1].BestFitness-ga.History[len(ga.History)-1-noImprovementGens].BestFitness) < improvementThreshold
+			(ga.History[last].BestFitness-ga.History[last-noImprovementGens].BestFitness) < improvementThreshold
 
 		if termCondition.Evaluate(ga) != shouldTerminate {
 			t.Errorf(

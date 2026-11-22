@@ -1,4 +1,3 @@
-// Package ga provides adapters for encoding package types.
 package ga
 
 import (

@@ -10,7 +10,7 @@ import (
 	"math/rand"
 )
 
-// Common errors for the encoding package
+// Common errors for the encoding package.
 var (
 	ErrInvalidGenomeType     = errors.New("invalid genome type")
 	ErrInvalidGenomeLength   = errors.New("invalid genome length")
@@ -22,9 +22,13 @@ var (
 type GenomeType int
 
 const (
+	// BinaryEncoding stores one 0/1 gene per byte.
 	BinaryEncoding GenomeType = iota
+	// IntegerEncoding stores each gene as a 0-255 slot mapped onto [MinValues[i], MaxValues[i]].
 	IntegerEncoding
+	// RealEncoding stores each gene as a 0-255 slot mapped linearly onto [MinValues[i], MaxValues[i]].
 	RealEncoding
+	// PermutationEncoding stores a permutation of 0..len-1, one element per byte.
 	PermutationEncoding
 )
 
@@ -97,11 +101,11 @@ func NewIntegerGenotype(genomeLength int, minValue, maxValue int) *Genotype {
 		MaxValues:  make([]float64, genomeLength),
 	}
 
-	for i := 0; i < genomeLength; i++ {
+	for i := range genomeLength {
 		genotype.MinValues[i] = float64(minValue)
 		genotype.MaxValues[i] = float64(maxValue)
 		// Genes hold a normalized 0-255 slot that GetIntegerValue maps onto [minValue, maxValue].
-		genotype.Genome[i] = byte(rand.Intn(math.MaxUint8 + 1))
+		genotype.Genome[i] = byte(rand.Intn(math.MaxUint8 + 1)) //nolint:gosec // Intn(256) fits in a byte
 	}
 
 	return genotype
@@ -133,20 +137,15 @@ func NewRealGenotype(genomeLength int, minValues, maxValues []float64) *Genotype
 		MaxValues:  make([]float64, genomeLength),
 	}
 
-	for i := 0; i < genomeLength; i++ {
-		// Ensure min is actually less than max
-		min, max := minValues[i], maxValues[i]
-		if min > max {
-			min, max = max, min
+	for i := range genomeLength {
+		lo, hi := minValues[i], maxValues[i]
+		if lo > hi {
+			lo, hi = hi, lo
 		}
 
-		genotype.MinValues[i] = min
-		genotype.MaxValues[i] = max
-
-		// Initialize with random values scaled to the appropriate range
-		normalizedValue := rand.Float64()
-		// スケーリングされた値を保存（エンコードされた値として）
-		genotype.Genome[i] = byte(255 * normalizedValue)
+		genotype.MinValues[i] = lo
+		genotype.MaxValues[i] = hi
+		genotype.Genome[i] = byte(math.MaxUint8 * rand.Float64())
 	}
 
 	return genotype
@@ -173,7 +172,7 @@ func NewPermutationGenotype(size int) *Genotype {
 	}
 
 	// Initialize with values 0 to size-1
-	for i := 0; i < size; i++ {
+	for i := range size {
 		genotype.Genome[i] = byte(i)
 	}
 
@@ -183,20 +182,6 @@ func NewPermutationGenotype(size int) *Genotype {
 	})
 
 	return genotype
-}
-
-// checkBounds verifies that a position is within the valid range of the genome.
-//
-// Parameters:
-// - position: the index to check.
-//
-// Returns:
-// - An error if the position is out of bounds, nil otherwise.
-func (g *Genotype) checkBounds(position int) error {
-	if position < 0 || position >= len(g.Genome) {
-		return fmt.Errorf("%w: %d (length: %d)", ErrInvalidGenomePosition, position, len(g.Genome))
-	}
-	return nil
 }
 
 // GetBinaryValue returns the binary value (0 or 1) at the specified position.
@@ -249,12 +234,7 @@ func (g *Genotype) GetIntegerValue(position int) (int, error) {
 		return 0, err
 	}
 
-	min := int(g.MinValues[position])
-	max := int(g.MaxValues[position])
-	range_ := max - min + 1
-
-	// Map the byte value (0-255) to the specified integer range
-	return min + (int(g.Genome[position])*range_)/256, nil
+	return g.GetIntegerValueUnsafe(position), nil
 }
 
 // GetIntegerValueUnsafe returns the integer value without bounds or type checking.
@@ -265,12 +245,10 @@ func (g *Genotype) GetIntegerValue(position int) (int, error) {
 // Returns:
 // - The integer value at the specified position.
 func (g *Genotype) GetIntegerValueUnsafe(position int) int {
-	min := int(g.MinValues[position])
-	max := int(g.MaxValues[position])
-	range_ := max - min + 1
+	lo := int(g.MinValues[position])
+	hi := int(g.MaxValues[position])
 
-	// Map the byte value (0-255) to the specified integer range
-	return min + (int(g.Genome[position])*range_)/256
+	return lo + (int(g.Genome[position])*(hi-lo+1))/(math.MaxUint8+1)
 }
 
 // GetRealValue returns the real value at the specified position.
@@ -290,9 +268,7 @@ func (g *Genotype) GetRealValue(position int) (float64, error) {
 		return 0, err
 	}
 
-	// Convert the byte (0-255) back to the original range
-	normalizedValue := float64(g.Genome[position]) / 255.0
-	return g.MinValues[position] + normalizedValue*(g.MaxValues[position]-g.MinValues[position]), nil
+	return g.GetRealValueUnsafe(position), nil
 }
 
 // GetRealValueUnsafe returns the real value without bounds or type checking.
@@ -303,8 +279,8 @@ func (g *Genotype) GetRealValue(position int) (float64, error) {
 // Returns:
 // - The real value at the specified position.
 func (g *Genotype) GetRealValueUnsafe(position int) float64 {
-	// Convert the byte (0-255) back to the original range
-	normalizedValue := float64(g.Genome[position]) / 255.0
+	normalizedValue := float64(g.Genome[position]) / math.MaxUint8
+
 	return g.MinValues[position] + normalizedValue*(g.MaxValues[position]-g.MinValues[position])
 }
 
@@ -325,17 +301,8 @@ func (g *Genotype) SetRealValue(position int, value float64) error {
 		return err
 	}
 
-	// Clamp the value to the allowed range
-	if value < g.MinValues[position] {
-		value = g.MinValues[position]
-	}
-	if value > g.MaxValues[position] {
-		value = g.MaxValues[position]
-	}
+	g.SetRealValueUnsafe(position, value)
 
-	// Convert the value back to a byte (0-255)
-	normalizedValue := (value - g.MinValues[position]) / (g.MaxValues[position] - g.MinValues[position])
-	g.Genome[position] = byte(normalizedValue * 255)
 	return nil
 }
 
@@ -353,9 +320,8 @@ func (g *Genotype) SetRealValueUnsafe(position int, value float64) {
 		value = g.MaxValues[position]
 	}
 
-	// Convert the value back to a byte (0-255)
 	normalizedValue := (value - g.MinValues[position]) / (g.MaxValues[position] - g.MinValues[position])
-	g.Genome[position] = byte(normalizedValue * 255)
+	g.Genome[position] = byte(normalizedValue * math.MaxUint8)
 }
 
 // GetPermutation returns the entire permutation as a slice of integers.
@@ -414,4 +380,12 @@ func (g *Genotype) Clone() *Genotype {
 // - A string describing the genotype's type and length.
 func (g *Genotype) String() string {
 	return fmt.Sprintf("Genotype{Type: %s, Length: %d}", g.GenomeType, len(g.Genome))
+}
+
+func (g *Genotype) checkBounds(position int) error {
+	if position < 0 || position >= len(g.Genome) {
+		return fmt.Errorf("%w: %d (length: %d)", ErrInvalidGenomePosition, position, len(g.Genome))
+	}
+
+	return nil
 }

@@ -1,6 +1,6 @@
-// Package ga: this file defines the Result returned by Evolve, the StopReason
-// enum, and the EarlyStopping configuration.
 package ga
+
+import "time"
 
 // StopReason records why an evolution run exited.
 type StopReason string
@@ -57,4 +57,17 @@ type EarlyStopping struct {
 	TargetFitness    float64
 	TargetFitnessSet bool
 	TimeLimit        int64 // nanoseconds; use int64(time.Duration)
+}
+
+func (es *EarlyStopping) check(bestFitness float64, elapsed time.Duration, noImprovementCount int) (StopReason, bool) {
+	switch {
+	case es.TargetFitnessSet && bestFitness >= es.TargetFitness:
+		return StopTargetFitness, true
+	case es.TimeLimit > 0 && elapsed.Nanoseconds() >= es.TimeLimit:
+		return StopTimeLimit, true
+	case es.Patience > 0 && noImprovementCount >= es.Patience:
+		return StopPatience, true
+	default:
+		return "", false
+	}
 }

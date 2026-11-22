@@ -22,7 +22,7 @@ func TestInitialize(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -36,7 +36,9 @@ func TestInitialize(t *testing.T) {
 		return &Phenotype{Fitness: fitness}
 	}
 
-	gaInstance.Initialize(populationSize, initFunc, evalFunc)
+	if err := gaInstance.Initialize(populationSize, initFunc, evalFunc); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
 
 	// Check if population was initialized
 	if gaInstance.Population == nil {
@@ -75,7 +77,7 @@ func TestEvolve(t *testing.T) {
 	populationSize := 10
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -157,7 +159,7 @@ func TestElitism(t *testing.T) {
 	populationSize := 10
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		genotype := NewBinaryGenotype(genomeLength)
 		// Initialize with all zeros
 		for i := range genotype.Genome {
@@ -260,7 +262,7 @@ func TestParallelEvaluation(t *testing.T) {
 	populationSize := 100
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -316,6 +318,10 @@ func TestParallelEvaluation(t *testing.T) {
 	// of genetic algorithms, but we verify that both methods completed successfully
 }
 
+func initBinary8(_ *rand.Rand) *Genotype { return NewBinaryGenotype(8) }
+
+func zeroFitness(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} }
+
 func TestErrorHandling(t *testing.T) {
 	gaInstance := &GA{
 		Selection: func(population []*Individual, rng *rand.Rand) []*Individual {
@@ -330,26 +336,26 @@ func TestErrorHandling(t *testing.T) {
 	}
 
 	// Test invalid population size
-	err := gaInstance.Initialize(0, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err := gaInstance.Initialize(0, initBinary8, zeroFitness)
 	if err == nil {
 		t.Error("Expected error for invalid population size")
 	}
 
 	// Test nil initialization function
-	err = gaInstance.Initialize(10, nil, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, nil, zeroFitness)
 	if err == nil {
 		t.Error("Expected error for nil initialization function")
 	}
 
 	// Test nil evaluation function
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, nil)
+	err = gaInstance.Initialize(10, initBinary8, nil)
 	if err == nil {
 		t.Error("Expected error for nil evaluation function")
 	}
 
 	// Test nil genetic operators
 	gaInstance.Selection = nil
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, initBinary8, zeroFitness)
 	if err == nil {
 		t.Error("Expected error for nil selection operator")
 	}
@@ -358,14 +364,14 @@ func TestErrorHandling(t *testing.T) {
 		return TournamentSelection(population, 3, rng)
 	}
 	gaInstance.Crossover = nil
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, initBinary8, zeroFitness)
 	if err == nil {
 		t.Error("Expected error for nil crossover operator")
 	}
 
 	gaInstance.Crossover = SinglePointCrossover
 	gaInstance.Mutation = nil
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, initBinary8, zeroFitness)
 	if err == nil {
 		t.Error("Expected error for nil mutation operator")
 	}
@@ -388,7 +394,7 @@ func TestAdaptiveParameters(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		return NewBinaryGenotype(genomeLength)
 	}
 
@@ -452,7 +458,7 @@ func TestTerminationConditions(t *testing.T) {
 	populationSize := 20
 	genomeLength := 8
 
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		g := NewBinaryGenotype(genomeLength)
 		// Initialize with a high-fitness pattern so threshold-termination
 		// scenarios are not at the mercy of the initial random draw.
@@ -522,14 +528,14 @@ func TestEdgeCases(t *testing.T) {
 	}
 
 	// Test with minimum population size
-	err := gaInstance.Initialize(1, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err := gaInstance.Initialize(1, initBinary8, zeroFitness)
 	if err != nil {
 		t.Errorf("Should accept population size of 1: %v", err)
 	}
 
 	// Test with maximum elitism count
 	gaInstance.ElitismCount = 100
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, initBinary8, zeroFitness)
 	if err != nil {
 		t.Errorf("Should handle large elitism count: %v", err)
 	}
@@ -540,7 +546,7 @@ func TestEdgeCases(t *testing.T) {
 	// Test with extreme mutation and crossover rates
 	gaInstance.MutationRate = 2.0
 	gaInstance.CrossoverRate = -1.0
-	err = gaInstance.Initialize(10, func(rng *rand.Rand) *Genotype { return NewBinaryGenotype(8) }, func(*Genotype) *Phenotype { return &Phenotype{Fitness: 0} })
+	err = gaInstance.Initialize(10, initBinary8, zeroFitness)
 	if err != nil {
 		t.Errorf("Should handle extreme rates: %v", err)
 	}
@@ -613,7 +619,7 @@ func TestReproducibilityWithSeed(t *testing.T) {
 }
 
 // TestResultBestNotAliasedToPopulation is a regression test for an aliasing
-// bug: bestIndividual stored a pointer into the live population, and when
+// defect: bestIndividual stored a pointer into the live population, and when
 // crossover skipped a pair the offspring aliased the parent — which the
 // mutation operator then mutated in place, silently corrupting the all-time
 // best. The fix clones the best on capture.
@@ -657,13 +663,15 @@ func TestResultBestNotAliasedToPopulation(t *testing.T) {
 	// actual genome. If aliasing corrupted it, these will diverge.
 	computed := evalFunc(result.Best.Genotype)
 	if computed.Fitness != result.Best.Phenotype.Fitness {
-		t.Errorf("Result.Best genome was mutated after capture: declared fitness %f, recomputed %f", result.Best.Phenotype.Fitness, computed.Fitness)
+		t.Errorf("Result.Best genome was mutated after capture: declared fitness %f, recomputed %f",
+			result.Best.Phenotype.Fitness, computed.Fitness)
 	}
 
 	// And the all-time best must be at least as fit as the final population's best.
 	popBest := gaInstance.Population.GetBestIndividual()
 	if result.Best.Phenotype.Fitness < popBest.Phenotype.Fitness {
-		t.Errorf("Result.Best.Fitness = %f < final population best = %f", result.Best.Phenotype.Fitness, popBest.Phenotype.Fitness)
+		t.Errorf("Result.Best.Fitness = %f < final population best = %f",
+			result.Best.Phenotype.Fitness, popBest.Phenotype.Fitness)
 	}
 }
 
@@ -679,12 +687,12 @@ func TestResultBestNotAliasedToPopulation(t *testing.T) {
 func TestResultInitialBestClonedAtStart(t *testing.T) {
 	const genomeLength = 8
 
-	identitySelection := func(p []*Individual, rng *rand.Rand) []*Individual {
+	identitySelection := func(p []*Individual, _ *rand.Rand) []*Individual {
 		selected := make([]*Individual, len(p))
 		copy(selected, p)
 		return selected
 	}
-	passthroughCrossover := func(p []*Individual, rate float64, rng *rand.Rand) []*Individual {
+	passthroughCrossover := func(p []*Individual, _ float64, _ *rand.Rand) []*Individual {
 		offspring := make([]*Individual, len(p))
 		copy(offspring, p)
 		return offspring
@@ -700,7 +708,7 @@ func TestResultInitialBestClonedAtStart(t *testing.T) {
 	}
 	// Every individual starts all-ones (the unbeatable maximum); a mutation rate
 	// of 1.0 flips every bit, degrading any in-place-mutated alias to fitness 0.
-	initFunc := func(rng *rand.Rand) *Genotype {
+	initFunc := func(_ *rand.Rand) *Genotype {
 		g := NewBinaryGenotype(genomeLength)
 		for i := range g.Genome {
 			g.Genome[i] = 1
@@ -729,11 +737,13 @@ func TestResultInitialBestClonedAtStart(t *testing.T) {
 	// Post-fix the initial best is a clone immune to in-place mutation, so it
 	// retains the all-ones genome and fitness genomeLength.
 	if result.Best.Phenotype.Fitness != float64(genomeLength) {
-		t.Errorf("Result.Best.Fitness = %f, want %d (initial best was aliased and mutated)", result.Best.Phenotype.Fitness, genomeLength)
+		t.Errorf("Result.Best.Fitness = %f, want %d (initial best was aliased and mutated)",
+			result.Best.Phenotype.Fitness, genomeLength)
 	}
 	computed := evalFunc(result.Best.Genotype)
 	if computed.Fitness != result.Best.Phenotype.Fitness {
-		t.Errorf("Result.Best genome does not match reported fitness: declared %f, recomputed %f", result.Best.Phenotype.Fitness, computed.Fitness)
+		t.Errorf("Result.Best genome does not match reported fitness: declared %f, recomputed %f",
+			result.Best.Phenotype.Fitness, computed.Fitness)
 	}
 }
 

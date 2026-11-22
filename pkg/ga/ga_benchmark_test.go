@@ -38,7 +38,7 @@ func BenchmarkEvolution(b *testing.B) {
 				EnableLogger:     false,
 			}
 
-			initFunc := func(rng *rand.Rand) *Genotype {
+			initFunc := func(_ *rand.Rand) *Genotype {
 				return NewBinaryGenotype(tc.genomeLength)
 			}
 
@@ -55,7 +55,7 @@ func BenchmarkEvolution(b *testing.B) {
 			}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				err := gaInstance.Initialize(tc.populationSize, initFunc, evalFunc)
 				if err != nil {
 					b.Fatalf("Failed to initialize GA: %v", err)
@@ -99,7 +99,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			// 選択演算子のベンチマーク
 			b.Run("Selection", func(b *testing.B) {
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					TournamentSelection(individuals, 3, rng)
 				}
 			})
@@ -107,7 +107,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			// 交叉演算子のベンチマーク
 			b.Run("Crossover", func(b *testing.B) {
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					SinglePointCrossover(individuals, 0.7, rng)
 				}
 			})
@@ -115,7 +115,7 @@ func BenchmarkGeneticOperators(b *testing.B) {
 			// 突然変異演算子のベンチマーク
 			b.Run("Mutation", func(b *testing.B) {
 				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					BitFlipMutation(individuals, 0.01, rng)
 				}
 			})
@@ -150,7 +150,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				EnableLogger:  false,
 			}
 
-			initFunc := func(rng *rand.Rand) *Genotype {
+			initFunc := func(_ *rand.Rand) *Genotype {
 				return NewBinaryGenotype(tc.genomeLength)
 			}
 
@@ -165,7 +165,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 			}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				err := gaInstance.Initialize(tc.populationSize, initFunc, evalFunc)
 				if err != nil {
 					b.Fatalf("Failed to initialize GA: %v", err)

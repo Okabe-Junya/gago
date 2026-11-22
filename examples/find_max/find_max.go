@@ -1,3 +1,4 @@
+// Command find_max maximizes f(x) = x * sin(x) on [0, π] with a binary-encoded GA.
 package main
 
 import (
