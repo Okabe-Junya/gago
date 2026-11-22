@@ -54,6 +54,29 @@ func TestNewIntegerGenotype(t *testing.T) {
 	}
 }
 
+func TestNewIntegerGenotypeDecodesAcrossRange(t *testing.T) {
+	const minValue, maxValue = 10, 200
+
+	genotype := NewIntegerGenotype(5000, minValue, maxValue)
+
+	seen := make(map[int]bool)
+	for i := range genotype.Genome {
+		value, err := genotype.GetIntegerValue(i)
+		if err != nil {
+			t.Fatalf("GetIntegerValue(%d): %v", i, err)
+		}
+		if value < minValue || value > maxValue {
+			t.Fatalf("value %d at %d outside [%d, %d]", value, i, minValue, maxValue)
+		}
+		seen[value] = true
+	}
+
+	if !seen[minValue] || !seen[maxValue] {
+		t.Errorf("decoded values do not span [%d, %d]: min seen %v, max seen %v",
+			minValue, maxValue, seen[minValue], seen[maxValue])
+	}
+}
+
 func TestNewRealGenotype(t *testing.T) {
 	genomeLength := 5
 	minValues := []float64{0.0, 1.0, 2.0, 3.0, 4.0}
