@@ -6,6 +6,7 @@ package encoding
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 )
 
@@ -99,7 +100,8 @@ func NewIntegerGenotype(genomeLength int, minValue, maxValue int) *Genotype {
 	for i := 0; i < genomeLength; i++ {
 		genotype.MinValues[i] = float64(minValue)
 		genotype.MaxValues[i] = float64(maxValue)
-		genotype.Genome[i] = byte(minValue + rand.Intn(maxValue-minValue+1))
+		// Genes hold a normalized 0-255 slot that GetIntegerValue maps onto [minValue, maxValue].
+		genotype.Genome[i] = byte(rand.Intn(math.MaxUint8 + 1))
 	}
 
 	return genotype

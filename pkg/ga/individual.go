@@ -59,10 +59,10 @@ func NewIntegerGenotype(genomeLength int, minValue, maxValue int, rng *rand.Rand
 		MaxValues:  make([]float64, genomeLength),
 	}
 
-	// Initialize with random values
+	// Genes hold a normalized 0-255 slot that GetIntegerValue maps onto [minValue, maxValue].
+	rng.Read(genotype.Genome)
+
 	for i := range genotype.Genome {
-		rangeValue := maxValue - minValue + 1
-		genotype.Genome[i] = byte(rng.Intn(rangeValue) + minValue)
 		genotype.MinValues[i] = float64(minValue)
 		genotype.MaxValues[i] = float64(maxValue)
 	}
