@@ -1,4 +1,3 @@
-// Package population provides types and operations for managing individuals and populations in genetic algorithms.
 package population
 
 import (
@@ -9,7 +8,7 @@ import (
 
 // Phenotype represents the observable traits of an individual, including its fitness value.
 type Phenotype struct {
-	Features map[string]interface{}
+	Features map[string]any
 	Fitness  float64
 }
 
@@ -23,7 +22,7 @@ type Individual struct {
 func NewPhenotype(fitness float64) *Phenotype {
 	return &Phenotype{
 		Fitness:  fitness,
-		Features: make(map[string]interface{}),
+		Features: make(map[string]any),
 	}
 }
 
@@ -33,7 +32,7 @@ func (ind *Individual) Clone() *Individual {
 	genotypeClone := ind.Genotype.Clone()
 
 	// Create a clone of the features map
-	featuresClone := make(map[string]interface{})
+	featuresClone := make(map[string]any)
 	for k, v := range ind.Phenotype.Features {
 		featuresClone[k] = v
 	}

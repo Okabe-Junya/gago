@@ -1,4 +1,3 @@
-// Package ga provides functionalities for implementing genetic algorithms.
 package ga
 
 import (
@@ -27,7 +26,7 @@ func NewPopulation(size int, initFunc func() *Individual) *Population {
 		Statistics:  &Statistics{},
 	}
 
-	for i := 0; i < size; i++ {
+	for i := range size {
 		pop.Individuals[i] = initFunc()
 	}
 

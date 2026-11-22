@@ -1,6 +1,32 @@
 package ga
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
+
+func TestNewIntegerGenotypeDecodesAcrossRange(t *testing.T) {
+	const minValue, maxValue = 10, 200
+
+	genotype := NewIntegerGenotype(5000, minValue, maxValue, rand.New(rand.NewSource(1)))
+
+	seen := make(map[int]bool)
+	for i := range genotype.Genome {
+		value, err := genotype.GetIntegerValue(i)
+		if err != nil {
+			t.Fatalf("GetIntegerValue(%d): %v", i, err)
+		}
+		if value < minValue || value > maxValue {
+			t.Fatalf("value %d at %d outside [%d, %d]", value, i, minValue, maxValue)
+		}
+		seen[value] = true
+	}
+
+	if !seen[minValue] || !seen[maxValue] {
+		t.Errorf("decoded values do not span [%d, %d]: min seen %v, max seen %v",
+			minValue, maxValue, seen[minValue], seen[maxValue])
+	}
+}
 
 func TestNewBinaryGenotype(t *testing.T) {
 	cases := []struct {

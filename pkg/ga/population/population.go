@@ -26,7 +26,7 @@ func NewPopulation(size int, initFunc func() *Individual) *Population {
 		Individuals: make([]*Individual, size),
 		Statistics:  &Statistics{},
 	}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		pop.Individuals[i] = initFunc()
 	}
 	return pop

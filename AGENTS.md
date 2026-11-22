@@ -28,7 +28,7 @@ The repo currently exposes the same concepts twice. New code generally lives in 
 - **Legacy / public entry point**: `pkg/ga/` defines `GA`, `Individual`, `Genotype`, `Phenotype`, `Population`, and the selection/crossover/mutation operators all in one package. Examples and the README use this API.
 - **Refactored sub-packages**:
   - `pkg/ga/encoding/` — `Genotype` + the four encodings (Binary / Integer / Real / Permutation) with a stricter typed-error API (`ErrInvalidGenomeType`, `ErrInvalidGenomePosition`, etc.) and `*Unsafe` fast-path accessors.
-  - `pkg/ga/population/` — `Individual`, `Phenotype` (note: `Features` here is `map[string]interface{}`, while `pkg/ga.Phenotype.Features` is `[]float64` — they are not interchangeable), `Population`.
+  - `pkg/ga/population/` — `Individual`, `Phenotype` (note: `Features` here is `map[string]any`, while `pkg/ga.Phenotype.Features` is `[]float64` — they are not interchangeable), `Population`.
   - `pkg/ga/operators/` — selection operators (tournament, roulette, rank, SUS, truncation, Boltzmann, NSGA-II-style multi-objective).
   - `pkg/ga/termination/` — richer termination conditions (composite AND/OR, stagnation, diversity-based) that still implement `ga.TerminationCondition` from the root package, so they plug into the legacy `GA` struct.
 - **Bridge**: `pkg/ga/genotype.go` exists only as an adapter between `ga.Genotype` and `encoding.Genotype` (`ConvertToEncodingGenotype` / `ConvertFromEncodingGenotype`). When touching encoding code, decide whether you are working in the legacy or refactored API and keep the adapters in sync.
@@ -62,14 +62,14 @@ Higher fitness is always better. Every selection operator, `GetBestIndividual`, 
 
 ## Conventions
 
-- Linting is configured in `.golangci.yaml` (Go 1.23 target). Test files are excluded from `errcheck`, `noctx`, and `govet` — production code is not.
+- Linting is configured in `.golangci.yaml` with every linter enabled; each disabled linter and exclusion states its reason there. Fix findings rather than adding exclusions, and give any new exclusion a reason.
 - Tests live next to the code they cover (`*_test.go`); benchmarks live in `pkg/ga/ga_benchmark_test.go`.
 - Do not add a `co-author` / `Co-authored-by` trailer to commits.
 - Branch naming and conventional-commit format are defined in the user's global instructions and apply here.
 
 ## Things that are easy to get wrong
 
-- `pkg/ga.Phenotype.Features` (`[]float64`) and `pkg/ga/population.Phenotype.Features` (`map[string]interface{}`) are different types. Cloning/conversion code in `pkg/ga/ga.go` (`cloneIndividual`) and `pkg/ga/genotype.go` (the adapters) only handles the legacy `[]float64` form.
+- `pkg/ga.Phenotype.Features` (`[]float64`) and `pkg/ga/population.Phenotype.Features` (`map[string]any`) are different types. Cloning/conversion code in `pkg/ga/ga.go` (`cloneIndividual`) and `pkg/ga/genotype.go` (the adapters) only handles the legacy `[]float64` form.
 - `TermCondition` is evaluated **after** `History` is appended for the generation, so `GenerationCountTermination(n)` stops once `len(History) >= n`, which includes the initial pre-evolution snapshot.
 - `EarlyStopping` is checked **before** `TermCondition` on tied generations, so when both would fire the same generation `Result.StopReason` reports the more specific `EarlyStopping` reason.
 - The seeded `*rand.Rand` is single-goroutine only; parallel fitness evaluation must not touch it (fitness functions should be deterministic anyway).

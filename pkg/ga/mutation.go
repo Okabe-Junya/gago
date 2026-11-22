@@ -1,8 +1,7 @@
-// Package ga provides functionalities for implementing genetic algorithms,
-// including mutation operations for introducing genetic diversity in the population.
 package ga
 
 import (
+	"math"
 	"math/rand"
 )
 
@@ -72,18 +71,8 @@ func GaussianMutation(population []*Individual, mutationRate float64, sigma floa
 	for _, ind := range population {
 		for i := range ind.Genotype.Genome {
 			if rng.Float64() < mutationRate {
-				// Add Gaussian noise to the gene
-				delta := rng.NormFloat64() * sigma
-
-				// Convert to byte with bounds checking
-				result := float64(ind.Genotype.Genome[i]) + delta
-				if result < 0 {
-					result = 0
-				} else if result > 255 {
-					result = 255
-				}
-
-				ind.Genotype.Genome[i] = byte(result)
+				result := float64(ind.Genotype.Genome[i]) + rng.NormFloat64()*sigma
+				ind.Genotype.Genome[i] = byte(max(0, min(result, math.MaxUint8)))
 			}
 		}
 	}
@@ -171,18 +160,18 @@ func ScrambleMutation(population []*Individual, mutationRate float64, rng *rand.
 // Parameters:
 // - population: a slice of pointers to Individual, representing the current population.
 // - mutationRate: the probability with which each gene will be mutated.
-// - min: the minimum value for the random replacement.
-// - max: the maximum value for the random replacement.
+// - minValue: the minimum value for the random replacement.
+// - maxValue: the maximum value for the random replacement.
 // - rng: the random source.
 //
 // This function modifies the input population in place.
-func UniformMutation(population []*Individual, mutationRate float64, min, max byte, rng *rand.Rand) {
+func UniformMutation(population []*Individual, mutationRate float64, minValue, maxValue byte, rng *rand.Rand) {
+	rangeValue := int(maxValue) - int(minValue) + 1
+
 	for _, ind := range population {
 		for i := range ind.Genotype.Genome {
 			if rng.Float64() < mutationRate {
-				// Replace with a random value in the range [min, max]
-				rangeValue := int(max) - int(min) + 1
-				ind.Genotype.Genome[i] = min + byte(rng.Intn(rangeValue))
+				ind.Genotype.Genome[i] = minValue + byte(rng.Intn(rangeValue)) //nolint:gosec // at most maxValue-minValue
 			}
 		}
 	}

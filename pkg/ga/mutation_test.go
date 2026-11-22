@@ -41,7 +41,8 @@ func TestBitFlipMutation(t *testing.T) {
 
 		BitFlipMutation(tc.population, tc.mutationRate, rng)
 
-		if tc.mutationRate == 1.0 {
+		switch tc.mutationRate {
+		case 1.0:
 			for i, ind := range tc.population {
 				anyUnflippedBit := false
 				for j, gene := range ind.Genotype.Genome {
@@ -50,10 +51,11 @@ func TestBitFlipMutation(t *testing.T) {
 					}
 				}
 				if anyUnflippedBit {
-					t.Errorf("Expected all bits to be flipped with mutation rate 1.0, but some bits remained unchanged in individual %d", i)
+					t.Errorf("Expected all bits to be flipped with mutation rate 1.0, "+
+						"but some bits remained unchanged in individual %d", i)
 				}
 			}
-		} else if tc.mutationRate == 0.0 {
+		case 0.0:
 			for i, ind := range tc.population {
 				if !reflect.DeepEqual(ind.Genotype.Genome, original[i].Genotype.Genome) {
 					t.Errorf("Expected no mutation, but mutation occurred in individual %d", i)
@@ -97,7 +99,7 @@ func TestSwapMutation(t *testing.T) {
 		}
 
 		anyMutationOccurred := false
-		for attempt := 0; attempt < 10; attempt++ {
+		for range 10 {
 			// Reset genomes to original state
 			for i, ind := range tc.population {
 				ind.Genotype.Genome = append([]byte(nil), original[i].Genotype.Genome...)

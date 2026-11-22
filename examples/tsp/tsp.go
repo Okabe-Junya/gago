@@ -38,7 +38,7 @@ var cities = func() [][2]float64 {
 func tourLength(order []byte) float64 {
 	total := 0.0
 	n := len(order)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		x1, y1 := cities[order[i]][0], cities[order[i]][1]
 		x2, y2 := cities[order[(i+1)%n]][0], cities[order[(i+1)%n]][1]
 		total += math.Hypot(x2-x1, y2-y1)

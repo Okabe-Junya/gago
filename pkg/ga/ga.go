@@ -1,9 +1,7 @@
-// Package ga provides functionalities for implementing genetic algorithms,
-// including the main GA struct and its methods for initialization and evolution.
 package ga
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -14,9 +12,32 @@ import (
 	"github.com/Okabe-Junya/gago/internal/logger"
 )
 
+var (
+	errInvalidPopulationSize = errors.New("population size must be positive")
+	errNilInitializeGenotype = errors.New("initializeGenotype function cannot be nil")
+	errNilEvaluatePhenotype  = errors.New("evaluatePhenotype function cannot be nil")
+	errNilSelection          = errors.New("selection operator cannot be nil")
+	errNilCrossover          = errors.New("crossover operator cannot be nil")
+	errNilMutation           = errors.New("mutation operator cannot be nil")
+	errNoValidIndividuals    = errors.New("population contains no valid individuals")
+	errEmptySelection        = errors.New("selection operator returned empty population")
+	errEmptyCrossover        = errors.New("crossover operator returned empty population")
+	errFitnessPanic          = errors.New("panic during fitness evaluation")
+	errNilPhenotype          = errors.New("evaluatePhenotype returned nil phenotype")
+)
+
+const (
+	defaultMutationRate  = 0.1
+	defaultCrossoverRate = 0.8
+	minAdaptiveMutation  = 0.01
+	maxAdaptiveMutation  = 0.5
+	minAdaptiveCrossover = 0.1
+	maxAdaptiveCrossover = 0.95
+)
+
 // TerminationCondition defines a condition for terminating the GA evolution process.
 type TerminationCondition interface {
-	Evaluate(*GA) bool
+	Evaluate(ga *GA) bool
 }
 
 // TerminationConditionFunc is a function type that implements TerminationCondition.
@@ -60,15 +81,15 @@ type GA struct {
 	LogJSON          bool
 }
 
+// timeNow is swapped by tests to control the clock seen by time-based termination.
+var timeNow = time.Now //nolint:gochecknoglobals // test seam for the clock
+
 // RNG returns the GA's random source. May be nil if Initialize has not run yet.
 // Callers that need to generate random numbers consistent with the GA's seed
 // (e.g., custom genotype initializers) should draw from this.
 func (ga *GA) RNG() *rand.Rand {
 	return ga.rng
 }
-
-// Function variable for time operations, allows for test mocking
-var timeNow = time.Now
 
 // Initialize initializes the population with the specified size and configuration.
 // It creates and evaluates the initial population using the provided functions.
@@ -81,88 +102,60 @@ var timeNow = time.Now
 //
 // Returns an error if the input parameters are invalid or if any of the required
 // genetic operators are not provided.
-func (ga *GA) Initialize(populationSize int, initializeGenotype func(*rand.Rand) *Genotype, evaluatePhenotype func(*Genotype) *Phenotype) error {
-	// Validate input parameters
+func (ga *GA) Initialize(
+	populationSize int,
+	initializeGenotype func(*rand.Rand) *Genotype,
+	evaluatePhenotype func(*Genotype) *Phenotype,
+) error {
 	if populationSize <= 0 {
-		return fmt.Errorf("population size must be positive, got %d", populationSize)
+		return fmt.Errorf("%w, got %d", errInvalidPopulationSize, populationSize)
 	}
+
 	if initializeGenotype == nil {
-		return fmt.Errorf("initializeGenotype function cannot be nil")
+		return errNilInitializeGenotype
 	}
+
 	if evaluatePhenotype == nil {
-		return fmt.Errorf("evaluatePhenotype function cannot be nil")
+		return errNilEvaluatePhenotype
 	}
 
-	// Seed the GA's RNG. Seed == 0 means "auto-seed from time".
-	if ga.Seed == 0 {
-		ga.rng = rand.New(rand.NewSource(timeNow().UnixNano()))
-	} else {
-		ga.rng = rand.New(rand.NewSource(ga.Seed))
-	}
+	ga.seedRNG()
 
-	// Create individuals with the initialization function
 	initFunc := func() *Individual {
 		genotype := initializeGenotype(ga.rng)
 		if genotype == nil {
 			panic("initializeGenotype returned nil genotype")
 		}
+
 		phenotype := evaluatePhenotype(genotype)
 		if phenotype == nil {
 			panic("evaluatePhenotype returned nil phenotype")
 		}
+
 		return &Individual{Genotype: genotype, Phenotype: phenotype}
 	}
 
 	ga.Population = NewPopulation(populationSize, initFunc)
 	ga.Population.CalculateStatistics()
 
-	// Initialize history
-	ga.History = make([]*Statistics, 0, ga.Generations+1) // Pre-allocate capacity for efficiency
+	ga.History = make([]*Statistics, 0, ga.Generations+1)
 	ga.History = append(ga.History, ga.Population.Statistics)
 
-	// Set default values for optional parameters
-	if ga.NumParallelEvals <= 0 {
-		ga.NumParallelEvals = runtime.NumCPU()
+	ga.applyDefaults(populationSize)
+
+	err := ga.validateOperators()
+	if err != nil {
+		return err
 	}
 
-	if ga.ElitismCount < 0 {
-		ga.ElitismCount = 0
-	} else if ga.ElitismCount > populationSize {
-		ga.ElitismCount = populationSize
-	}
-
-	// Default termination condition if none provided
-	if ga.TermCondition == nil {
-		ga.TermCondition = TerminationConditionFunc(func(ga *GA) bool {
-			return false
-		})
-	}
-
-	// Validate genetic operators
-	if ga.Selection == nil {
-		return fmt.Errorf("selection operator cannot be nil")
-	}
-	if ga.Crossover == nil {
-		return fmt.Errorf("crossover operator cannot be nil")
-	}
-	if ga.Mutation == nil {
-		return fmt.Errorf("mutation operator cannot be nil")
-	}
-
-	// Validate rates
-	if ga.MutationRate <= 0 || ga.MutationRate > 1 {
-		ga.MutationRate = 0.1 // Default mutation rate
-	}
-	if ga.CrossoverRate <= 0 || ga.CrossoverRate > 1 {
-		ga.CrossoverRate = 0.8 // Default crossover rate
-	}
+	ga.applyDefaultRates()
 
 	if ga.EnableLogger {
 		ga.initializeLogger()
 	}
 
-	// Initialize runtime tracking
 	ga.StartTime = timeNow()
+
 	return nil
 }
 
@@ -188,131 +181,43 @@ func (ga *GA) Initialize(populationSize int, initializeGenotype func(*rand.Rand)
 //     whatever progress had been made before the failure.
 func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Result, error) {
 	if evaluatePhenotype == nil {
-		return nil, fmt.Errorf("evaluatePhenotype function cannot be nil")
+		return nil, errNilEvaluatePhenotype
 	}
 
-	// Reset start time for this evolution
 	ga.StartTime = timeNow()
+
 	bestIndividual := ga.Population.GetBestIndividual()
 	if bestIndividual == nil {
-		return nil, fmt.Errorf("initial population contains no valid individuals")
+		return nil, fmt.Errorf("initial %w", errNoValidIndividuals)
 	}
 	// Clone so the all-time best is decoupled from the live population. Without
 	// this, gen-0's best can be selected, aliased into offspring via crossover's
 	// pass-through branch, mutated in place, and returned as Result.Best with a
 	// Genome that no longer matches its reported Fitness. The improvement path
 	// below clones for the same reason.
-	bestIndividual = ga.cloneIndividual(bestIndividual)
-
-	bestFitness := bestIndividual.Phenotype.Fitness
-	noImprovementCount := 0
+	best := bestTracker{individual: ga.cloneIndividual(bestIndividual)}
+	best.fitness = best.individual.Phenotype.Fitness
 	stopReason := StopMaxGenerations
 	lastGen := 0
-
-	// Pre-allocate slices for better performance
-	var selectedIndividuals []*Individual
-	var offspring []*Individual
 	elites := make([]*Individual, 0, ga.ElitismCount)
 
-	for gen := 0; gen < ga.Generations; gen++ {
-		genStartTime := time.Now()
+	for gen := range ga.Generations {
+		ga.logGenerationStats(gen, best.fitness, best.noImprovementCount)
 
-		// Log generation stats
-		if ga.Logger != nil {
-			stats := map[string]interface{}{
-				"generation":     gen,
-				"bestFitness":    bestIndividual.Phenotype.Fitness,
-				"averageFitness": ga.Population.Statistics.AverageFitness,
-				"diversity":      ga.Population.Statistics.Diversity,
-				"noImprovement":  noImprovementCount,
-			}
-			ga.Logger.LogGenerationStats(gen, stats, time.Since(genStartTime))
+		var err error
+
+		elites, err = ga.advanceGeneration(gen, evaluatePhenotype, elites)
+		if err != nil {
+			return nil, err
 		}
 
-		// Apply genetic operators
-		selectedIndividuals = ga.Selection(ga.Population.Individuals, ga.rng)
-		if len(selectedIndividuals) == 0 {
-			return nil, fmt.Errorf("selection operator returned empty population at generation %d", gen)
-		}
-
-		offspring = ga.Crossover(selectedIndividuals, ga.CrossoverRate, ga.rng)
-		if len(offspring) == 0 {
-			return nil, fmt.Errorf("crossover operator returned empty population at generation %d", gen)
-		}
-
-		ga.Mutation(offspring, ga.MutationRate, ga.rng)
-
-		// Store elite individuals if elitism is enabled
-		if ga.ElitismCount > 0 {
-			ga.Population.SortByFitness()
-			elites = elites[:0] // Reuse slice
-			for i := 0; i < ga.ElitismCount && i < len(ga.Population.Individuals); i++ {
-				elites = append(elites, ga.cloneIndividual(ga.Population.Individuals[i]))
-			}
-		}
-
-		// Update mutation and crossover rates if adaptive parameters are enabled
-		if ga.AdaptiveParams {
-			oldMutationRate := ga.MutationRate
-			oldCrossoverRate := ga.CrossoverRate
-			ga.updateAdaptiveParams()
-			if ga.Logger != nil {
-				ga.Logger.Debug("Adaptive parameters updated",
-					"oldMutationRate", oldMutationRate,
-					"newMutationRate", ga.MutationRate,
-					"oldCrossoverRate", oldCrossoverRate,
-					"newCrossoverRate", ga.CrossoverRate)
-			}
-		}
-
-		// Evaluate new population in parallel
-		evalStartTime := time.Now()
-		ga.evaluatePopulationInParallel(offspring, evaluatePhenotype)
-		if ga.Logger != nil {
-			ga.Logger.Debug("Population evaluation completed",
-				"time", time.Since(evalStartTime),
-				"parallelWorkers", ga.NumParallelEvals)
-		}
-
-		// Create new population
-		ga.Population.Individuals = offspring
-
-		// Reinsert elite individuals if elitism is enabled
-		if ga.ElitismCount > 0 {
-			for i, elite := range elites {
-				if i < len(ga.Population.Individuals) {
-					ga.Population.Replace(i, elite)
-				}
-			}
-		}
-
-		// Calculate statistics for the new population
-		ga.Population.CalculateStatistics()
-
-		// Update best individual and no improvement counter
 		currentBest := ga.Population.GetBestIndividual()
 		if currentBest == nil {
-			return nil, fmt.Errorf("population contains no valid individuals at generation %d", gen)
+			return nil, fmt.Errorf("%w at generation %d", errNoValidIndividuals, gen)
 		}
 
-		// EarlyStopping.Tol turns "any improvement" into "improvement > Tol";
-		// reuse the same threshold for the loop's own noImprovementCount.
-		tol := 0.0
-		if ga.EarlyStopping != nil {
-			tol = ga.EarlyStopping.Tol
-		}
-		if currentBest.Phenotype.Fitness > bestFitness+tol {
-			// Clone so the all-time best is immune to in-place mutation if
-			// this pointer survives into the next generation as a parent and
-			// gets mutated by the mutation operator (crossover skips alias).
-			bestIndividual = ga.cloneIndividual(currentBest)
-			bestFitness = currentBest.Phenotype.Fitness
-			noImprovementCount = 0
-		} else {
-			noImprovementCount++
-		}
+		best.observe(ga, currentBest)
 
-		// Add current statistics to history
 		ga.History = append(ga.History, ga.Population.Statistics)
 		lastGen = gen + 1
 
@@ -320,258 +225,20 @@ func (ga *GA) Evolve(evaluatePhenotype func(*Genotype) *Phenotype) (*Result, err
 			ga.OnGeneration(lastGen, ga.Population.Statistics)
 		}
 
-		// Check stop criteria after recording statistics. EarlyStopping fires
-		// before TermCondition so that StopReason reports the more specific
-		// reason when both would fire on the same generation.
-		if ga.EarlyStopping != nil {
-			es := ga.EarlyStopping
-			if es.TargetFitnessSet && ga.Population.Statistics.BestFitness >= es.TargetFitness {
-				stopReason = StopTargetFitness
-				break
-			}
-			if es.TimeLimit > 0 && time.Since(ga.StartTime).Nanoseconds() >= es.TimeLimit {
-				stopReason = StopTimeLimit
-				break
-			}
-			if es.Patience > 0 && noImprovementCount >= es.Patience {
-				stopReason = StopPatience
-				break
-			}
-		}
+		if reason, stop := ga.shouldStop(gen, best.noImprovementCount); stop {
+			stopReason = reason
 
-		// Check termination condition after recording statistics
-		if ga.TermCondition != nil && ga.TermCondition.Evaluate(ga) {
-			if ga.Logger != nil {
-				ga.Logger.Info("Evolution terminated",
-					"reason", "Termination condition met",
-					"generation", gen,
-					"totalRuntime", time.Since(ga.StartTime))
-			}
-			stopReason = StopTermCondition
 			break
 		}
 	}
 
 	return &Result{
-		Best:                bestIndividual,
+		Best:                best.individual,
 		Population:          ga.Population,
 		History:             ga.History,
 		StopReason:          stopReason,
 		StoppedAtGeneration: lastGen,
 	}, nil
-}
-
-// evaluatePopulationInParallel evaluates the fitness of individuals in parallel.
-// It uses a worker pool pattern to process individuals efficiently and safely handles panics.
-// The context allows for graceful cancellation of the evaluation process.
-func (ga *GA) evaluatePopulationInParallel(population []*Individual, evaluatePhenotype func(*Genotype) *Phenotype) {
-	if len(population) == 0 {
-		return
-	}
-
-	// Use sequential evaluation if parallel processing is disabled
-	if ga.NumParallelEvals <= 1 {
-		for _, ind := range population {
-			if ind == nil {
-				continue
-			}
-			ind.Phenotype = evaluatePhenotype(ind.Genotype)
-		}
-		return
-	}
-
-	// Create a context that can be used to signal cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure all resources are released when we're done
-
-	// Create channels for work distribution and result collection
-	type job struct {
-		individual *Individual
-		index      int
-	}
-	type result struct {
-		err       error
-		phenotype *Phenotype
-		index     int
-	}
-
-	jobs := make(chan job, len(population))
-	results := make(chan result, len(population))
-	errorChan := make(chan error, len(population))
-
-	// Start worker goroutines
-	var wg sync.WaitGroup
-	numWorkers := min(ga.NumParallelEvals, len(population))
-
-	// Create a pool of worker goroutines
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-
-			// Process jobs until the channel is closed or context is cancelled
-			for {
-				select {
-				case <-ctx.Done():
-					// Context was cancelled, stop processing
-					return
-				case j, ok := <-jobs:
-					if !ok {
-						// Channel closed, no more jobs
-						return
-					}
-
-					// Evaluate the individual with panic recovery
-					var phenotype *Phenotype
-					var err error
-
-					func() {
-						defer func() {
-							if r := recover(); r != nil {
-								err = fmt.Errorf("panic during fitness evaluation: %v", r)
-								if ga.Logger != nil {
-									ga.Logger.Error("Panic in worker goroutine",
-										"workerID", workerID,
-										"individualIndex", j.index,
-										"panic", fmt.Sprintf("%v", r))
-								}
-							}
-						}()
-
-						phenotype = evaluatePhenotype(j.individual.Genotype)
-						if phenotype == nil {
-							err = fmt.Errorf("evaluatePhenotype returned nil phenotype")
-						}
-					}()
-
-					// Send the result back
-					results <- result{
-						index:     j.index,
-						phenotype: phenotype,
-						err:       err,
-					}
-				}
-			}
-		}(i)
-	}
-
-	// Send all individuals to the worker pool
-	for i, ind := range population {
-		if ind == nil {
-			continue
-		}
-		jobs <- job{index: i, individual: ind}
-	}
-
-	// Close the jobs channel to signal no more work
-	close(jobs)
-
-	// Collect results in a separate goroutine to avoid deadlock
-	// if a worker panics and can't send to the results channel
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// Process the results
-	for res := range results {
-		if res.err != nil {
-			errorChan <- res.err
-			// Assign a very low fitness to avoid further issues
-			population[res.index].Phenotype = &Phenotype{Fitness: -math.MaxFloat64}
-		} else {
-			population[res.index].Phenotype = res.phenotype
-		}
-	}
-
-	// Collect and log errors
-	close(errorChan)
-	var errors []error
-	for err := range errorChan {
-		errors = append(errors, err)
-	}
-
-	if len(errors) > 0 && ga.Logger != nil {
-		ga.Logger.Error("Errors during parallel evaluation",
-			"errorCount", len(errors),
-			"errors", errors)
-	}
-}
-
-// min returns the smaller of two integers.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// updateAdaptiveParams updates mutation and crossover rates based on population diversity.
-func (ga *GA) updateAdaptiveParams() {
-	// Decrease mutation rate and increase crossover rate when diversity is high
-	// Increase mutation rate and decrease crossover rate when diversity is low
-	diversity := ga.Population.Statistics.Diversity
-
-	// Normalize diversity to a value between 0 and 1
-	normalizedDiversity := math.Min(diversity, 1.0)
-
-	// Base mutation rate is higher when diversity is low
-	baseMutationRate := 0.1
-	baseCrossoverRate := 0.8
-
-	// Adjust rates based on diversity
-	// When diversity is low, increase mutation rate and decrease crossover rate
-	// When diversity is high, decrease mutation rate and increase crossover rate
-	ga.MutationRate = baseMutationRate * (1.0 + (1.0 - normalizedDiversity))
-	ga.CrossoverRate = baseCrossoverRate * normalizedDiversity
-
-	// Ensure rates stay within reasonable bounds
-	ga.MutationRate = math.Max(0.01, math.Min(0.5, ga.MutationRate))
-	ga.CrossoverRate = math.Max(0.1, math.Min(0.95, ga.CrossoverRate))
-}
-
-// cloneIndividual creates a deep copy of an individual.
-func (ga *GA) cloneIndividual(ind *Individual) *Individual {
-	if ind == nil {
-		return nil
-	}
-
-	genomeClone := make([]byte, len(ind.Genotype.Genome))
-	copy(genomeClone, ind.Genotype.Genome)
-
-	// Clone MinValues if they exist
-	var minValuesClone []float64
-	if len(ind.Genotype.MinValues) > 0 {
-		minValuesClone = make([]float64, len(ind.Genotype.MinValues))
-		copy(minValuesClone, ind.Genotype.MinValues)
-	}
-
-	// Clone MaxValues if they exist
-	var maxValuesClone []float64
-	if len(ind.Genotype.MaxValues) > 0 {
-		maxValuesClone = make([]float64, len(ind.Genotype.MaxValues))
-		copy(maxValuesClone, ind.Genotype.MaxValues)
-	}
-
-	// Clone Features
-	var featuresClone []float64
-	if ind.Phenotype != nil && len(ind.Phenotype.Features) > 0 {
-		featuresClone = make([]float64, len(ind.Phenotype.Features))
-		copy(featuresClone, ind.Phenotype.Features)
-	}
-
-	return &Individual{
-		Genotype: &Genotype{
-			Genome:     genomeClone,
-			MinValues:  minValuesClone,
-			MaxValues:  maxValuesClone,
-			GenomeType: ind.Genotype.GenomeType,
-		},
-		Phenotype: &Phenotype{
-			Fitness:  ind.Phenotype.Fitness,
-			Features: featuresClone,
-		},
-	}
 }
 
 // GetStatistics returns the current statistics of the population.
@@ -584,23 +251,377 @@ func (ga *GA) GetRuntime() time.Duration {
 	return time.Since(ga.StartTime)
 }
 
-// initializeLogger initializes the logger with the specified configuration.
-func (ga *GA) initializeLogger() {
-	options := []logger.LoggerOption{}
+func (ga *GA) seedRNG() {
+	// Seed == 0 means "auto-seed from time".
+	if ga.Seed == 0 {
+		ga.rng = rand.New(rand.NewSource(timeNow().UnixNano()))
+	} else {
+		ga.rng = rand.New(rand.NewSource(ga.Seed))
+	}
+}
 
-	// Set log level if specified
-	if ga.LogLevel != 0 { // Assuming 0 is the default/unspecified value
+func (ga *GA) applyDefaults(populationSize int) {
+	if ga.NumParallelEvals <= 0 {
+		ga.NumParallelEvals = runtime.NumCPU()
+	}
+
+	ga.ElitismCount = max(0, min(ga.ElitismCount, populationSize))
+
+	if ga.TermCondition == nil {
+		ga.TermCondition = TerminationConditionFunc(func(_ *GA) bool {
+			return false
+		})
+	}
+}
+
+func (ga *GA) validateOperators() error {
+	switch {
+	case ga.Selection == nil:
+		return errNilSelection
+	case ga.Crossover == nil:
+		return errNilCrossover
+	case ga.Mutation == nil:
+		return errNilMutation
+	default:
+		return nil
+	}
+}
+
+func (ga *GA) applyDefaultRates() {
+	if ga.MutationRate <= 0 || ga.MutationRate > 1 {
+		ga.MutationRate = defaultMutationRate
+	}
+
+	if ga.CrossoverRate <= 0 || ga.CrossoverRate > 1 {
+		ga.CrossoverRate = defaultCrossoverRate
+	}
+}
+
+func (ga *GA) logGenerationStats(gen int, bestFitness float64, noImprovementCount int) {
+	if ga.Logger == nil {
+		return
+	}
+
+	genStartTime := time.Now()
+	stats := map[string]any{
+		"generation":     gen,
+		"bestFitness":    bestFitness,
+		"averageFitness": ga.Population.Statistics.AverageFitness,
+		"diversity":      ga.Population.Statistics.Diversity,
+		"noImprovement":  noImprovementCount,
+	}
+	ga.Logger.LogGenerationStats(gen, stats, time.Since(genStartTime))
+}
+
+// advanceGeneration replaces the population with the next evaluated generation,
+// carrying elites over. It returns the elites slice for reuse in the next call.
+func (ga *GA) advanceGeneration(
+	gen int,
+	evaluatePhenotype func(*Genotype) *Phenotype,
+	elites []*Individual,
+) ([]*Individual, error) {
+	selectedIndividuals := ga.Selection(ga.Population.Individuals, ga.rng)
+	if len(selectedIndividuals) == 0 {
+		return elites, fmt.Errorf("%w at generation %d", errEmptySelection, gen)
+	}
+
+	offspring := ga.Crossover(selectedIndividuals, ga.CrossoverRate, ga.rng)
+	if len(offspring) == 0 {
+		return elites, fmt.Errorf("%w at generation %d", errEmptyCrossover, gen)
+	}
+
+	ga.Mutation(offspring, ga.MutationRate, ga.rng)
+
+	elites = ga.snapshotElites(elites)
+
+	if ga.AdaptiveParams {
+		ga.adaptParams()
+	}
+
+	evalStartTime := time.Now()
+	ga.evaluatePopulationInParallel(offspring, evaluatePhenotype)
+
+	if ga.Logger != nil {
+		ga.Logger.Debug("Population evaluation completed",
+			"time", time.Since(evalStartTime),
+			"parallelWorkers", ga.NumParallelEvals)
+	}
+
+	ga.Population.Individuals = offspring
+	for i, elite := range elites {
+		ga.Population.Replace(i, elite)
+	}
+
+	ga.Population.CalculateStatistics()
+
+	return elites, nil
+}
+
+func (ga *GA) snapshotElites(elites []*Individual) []*Individual {
+	if ga.ElitismCount <= 0 {
+		return elites[:0]
+	}
+
+	ga.Population.SortByFitness()
+
+	elites = elites[:0]
+	for i := 0; i < ga.ElitismCount && i < len(ga.Population.Individuals); i++ {
+		elites = append(elites, ga.cloneIndividual(ga.Population.Individuals[i]))
+	}
+
+	return elites
+}
+
+func (ga *GA) adaptParams() {
+	oldMutationRate := ga.MutationRate
+	oldCrossoverRate := ga.CrossoverRate
+
+	ga.updateAdaptiveParams()
+
+	if ga.Logger != nil {
+		ga.Logger.Debug("Adaptive parameters updated",
+			"oldMutationRate", oldMutationRate,
+			"newMutationRate", ga.MutationRate,
+			"oldCrossoverRate", oldCrossoverRate,
+			"newCrossoverRate", ga.CrossoverRate)
+	}
+}
+
+// bestTracker holds the all-time best individual of a run.
+type bestTracker struct {
+	individual         *Individual
+	fitness            float64
+	noImprovementCount int
+}
+
+func (b *bestTracker) observe(ga *GA, current *Individual) {
+	// EarlyStopping.Tol turns "any improvement" into "improvement > Tol";
+	// reuse the same threshold for noImprovementCount.
+	tol := 0.0
+	if ga.EarlyStopping != nil {
+		tol = ga.EarlyStopping.Tol
+	}
+
+	if current.Phenotype.Fitness <= b.fitness+tol {
+		b.noImprovementCount++
+
+		return
+	}
+
+	// Clone so the all-time best is immune to in-place mutation if this
+	// pointer survives into the next generation as a parent and gets mutated
+	// by the mutation operator (crossover skips alias).
+	b.individual = ga.cloneIndividual(current)
+	b.fitness = current.Phenotype.Fitness
+	b.noImprovementCount = 0
+}
+
+// shouldStop checks EarlyStopping before TermCondition so that StopReason
+// reports the more specific reason when both would fire on the same generation.
+func (ga *GA) shouldStop(gen, noImprovementCount int) (StopReason, bool) {
+	if ga.EarlyStopping != nil {
+		reason, stop := ga.EarlyStopping.check(
+			ga.Population.Statistics.BestFitness, time.Since(ga.StartTime), noImprovementCount)
+		if stop {
+			return reason, true
+		}
+	}
+
+	if ga.TermCondition != nil && ga.TermCondition.Evaluate(ga) {
+		if ga.Logger != nil {
+			ga.Logger.Info("Evolution terminated",
+				"reason", "Termination condition met",
+				"generation", gen,
+				"totalRuntime", time.Since(ga.StartTime))
+		}
+
+		return StopTermCondition, true
+	}
+
+	return "", false
+}
+
+type evalJob struct {
+	individual *Individual
+	index      int
+}
+
+type evalResult struct {
+	err       error
+	phenotype *Phenotype
+	index     int
+}
+
+// evaluatePopulationInParallel evaluates the fitness of individuals with a
+// worker pool. A panicking or nil-returning fitness function does not abort the
+// run: that individual gets -math.MaxFloat64 fitness and the error is logged.
+func (ga *GA) evaluatePopulationInParallel(population []*Individual, evaluatePhenotype func(*Genotype) *Phenotype) {
+	if len(population) == 0 {
+		return
+	}
+
+	if ga.NumParallelEvals <= 1 {
+		evaluateSequentially(population, evaluatePhenotype)
+
+		return
+	}
+
+	jobs := make(chan evalJob, len(population))
+	results := make(chan evalResult, len(population))
+
+	var wg sync.WaitGroup
+	for workerID := range min(ga.NumParallelEvals, len(population)) {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for j := range jobs {
+				phenotype, err := ga.safeEvaluate(workerID, j, evaluatePhenotype)
+				results <- evalResult{index: j.index, phenotype: phenotype, err: err}
+			}
+		}()
+	}
+
+	for i, ind := range population {
+		if ind == nil {
+			continue
+		}
+
+		jobs <- evalJob{index: i, individual: ind}
+	}
+
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	ga.collectEvaluations(population, results)
+}
+
+func evaluateSequentially(population []*Individual, evaluatePhenotype func(*Genotype) *Phenotype) {
+	for _, ind := range population {
+		if ind == nil {
+			continue
+		}
+
+		ind.Phenotype = evaluatePhenotype(ind.Genotype)
+	}
+}
+
+func (ga *GA) collectEvaluations(population []*Individual, results <-chan evalResult) {
+	var evalErrors []error
+
+	for res := range results {
+		if res.err != nil {
+			evalErrors = append(evalErrors, res.err)
+			population[res.index].Phenotype = &Phenotype{Fitness: -math.MaxFloat64}
+		} else {
+			population[res.index].Phenotype = res.phenotype
+		}
+	}
+
+	if len(evalErrors) > 0 && ga.Logger != nil {
+		ga.Logger.Error("Errors during parallel evaluation",
+			"errorCount", len(evalErrors),
+			"errors", evalErrors)
+	}
+}
+
+func (ga *GA) safeEvaluate(workerID int, j evalJob, evaluatePhenotype func(*Genotype) *Phenotype) (*Phenotype, error) {
+	var (
+		phenotype *Phenotype
+		err       error
+	)
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("%w: %v", errFitnessPanic, r)
+
+				if ga.Logger != nil {
+					ga.Logger.Error("Panic in worker goroutine",
+						"workerID", workerID,
+						"individualIndex", j.index,
+						"panic", fmt.Sprintf("%v", r))
+				}
+			}
+		}()
+
+		phenotype = evaluatePhenotype(j.individual.Genotype)
+	}()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if phenotype == nil {
+		return nil, errNilPhenotype
+	}
+
+	return phenotype, nil
+}
+
+// updateAdaptiveParams raises the mutation rate and lowers the crossover rate
+// as population diversity falls, and the reverse as it rises.
+func (ga *GA) updateAdaptiveParams() {
+	normalizedDiversity := math.Min(ga.Population.Statistics.Diversity, 1.0)
+
+	ga.MutationRate = defaultMutationRate * (1.0 + (1.0 - normalizedDiversity))
+	ga.CrossoverRate = defaultCrossoverRate * normalizedDiversity
+
+	ga.MutationRate = math.Max(minAdaptiveMutation, math.Min(maxAdaptiveMutation, ga.MutationRate))
+	ga.CrossoverRate = math.Max(minAdaptiveCrossover, math.Min(maxAdaptiveCrossover, ga.CrossoverRate))
+}
+
+// cloneIndividual creates a deep copy of an individual.
+func (ga *GA) cloneIndividual(ind *Individual) *Individual {
+	if ind == nil {
+		return nil
+	}
+
+	var featuresClone []float64
+	if ind.Phenotype != nil {
+		featuresClone = cloneNonEmpty(ind.Phenotype.Features)
+	}
+
+	return &Individual{
+		Genotype: &Genotype{
+			Genome:     append([]byte(nil), ind.Genotype.Genome...),
+			MinValues:  cloneNonEmpty(ind.Genotype.MinValues),
+			MaxValues:  cloneNonEmpty(ind.Genotype.MaxValues),
+			GenomeType: ind.Genotype.GenomeType,
+		},
+		Phenotype: &Phenotype{
+			Fitness:  ind.Phenotype.Fitness,
+			Features: featuresClone,
+		},
+	}
+}
+
+func cloneNonEmpty(values []float64) []float64 {
+	if len(values) == 0 {
+		return nil
+	}
+
+	return append([]float64(nil), values...)
+}
+
+func (ga *GA) initializeLogger() {
+	options := []logger.Option{}
+
+	if ga.LogLevel != 0 {
 		options = append(options, logger.WithLevel(ga.LogLevel))
 	}
 
-	// Set JSON format if requested
 	if ga.LogJSON {
 		options = append(options, logger.WithJSON())
 	}
 
 	ga.Logger = logger.NewLogger(ga.EnableLogger, options...)
 
-	// Log initial configuration
 	if ga.Logger != nil {
 		ga.Logger.Info("Genetic algorithm initialized",
 			"generations", ga.Generations,

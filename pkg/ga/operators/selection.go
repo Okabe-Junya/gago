@@ -25,7 +25,7 @@ func TournamentSelection(individuals []*population.Individual, tournamentSize in
 	selected := make([]*population.Individual, len(individuals))
 	for i := range selected {
 		best := individuals[rand.Intn(len(individuals))]
-		for j := 0; j < tournamentSize-1; j++ {
+		for range tournamentSize - 1 {
 			contender := individuals[rand.Intn(len(individuals))]
 			if contender.Phenotype.Fitness > best.Phenotype.Fitness {
 				best = contender
@@ -271,25 +271,10 @@ func MultiObjectiveSelection(
 func nonDominatedSort(individuals []*population.Individual, objectiveValues [][]float64) [][]*population.Individual {
 	n := len(individuals)
 	fronts := [][]*population.Individual{}
-	// Count how many solutions dominate each solution
-	dominationCount := make([]int, n)
-	// For each solution, store the solutions it dominates
-	dominated := make([][]int, n)
-	// Calculate domination relationships
-	for i := 0; i < n; i++ {
-		for j := i + 1; j < n; j++ {
-			if dominates(objectiveValues[i], objectiveValues[j]) {
-				dominated[i] = append(dominated[i], j)
-				dominationCount[j]++
-			} else if dominates(objectiveValues[j], objectiveValues[i]) {
-				dominated[j] = append(dominated[j], i)
-				dominationCount[i]++
-			}
-		}
-	}
+	dominated, dominationCount := dominationGraph(objectiveValues)
 	// Add the first front (non-dominated individuals)
 	front := []*population.Individual{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if dominationCount[i] == 0 {
 			front = append(front, individuals[i])
 		}
@@ -318,11 +303,33 @@ func nonDominatedSort(individuals []*population.Individual, objectiveValues [][]
 	return fronts
 }
 
+// dominationGraph returns, for each solution, the indices it dominates and the
+// number of solutions that dominate it.
+func dominationGraph(objectiveValues [][]float64) ([][]int, []int) {
+	n := len(objectiveValues)
+	dominated := make([][]int, n)
+	dominationCount := make([]int, n)
+
+	for i := range n {
+		for j := i + 1; j < n; j++ {
+			if dominates(objectiveValues[i], objectiveValues[j]) {
+				dominated[i] = append(dominated[i], j)
+				dominationCount[j]++
+			} else if dominates(objectiveValues[j], objectiveValues[i]) {
+				dominated[j] = append(dominated[j], i)
+				dominationCount[i]++
+			}
+		}
+	}
+
+	return dominated, dominationCount
+}
+
 // dominates checks if solution a dominates solution b.
 // a dominates b if a is not worse than b in all objectives and strictly better in at least one.
 func dominates(a, b []float64) bool {
 	better := false
-	for i := 0; i < len(a); i++ {
+	for i := range a {
 		if a[i] < b[i] {
 			return false
 		}
@@ -349,7 +356,7 @@ func calculateCrowdingDistance(front []*population.Individual, objectiveValues [
 		ind.Phenotype.Fitness = 0
 	}
 	numObjectives := len(objectiveValues[0])
-	for m := 0; m < numObjectives; m++ {
+	for m := range numObjectives {
 		// Sort the front by the current objective
 		sortByObjective(front, objectiveValues, m)
 		// The boundary points have infinite distance
@@ -379,17 +386,17 @@ func sortByObjective(front []*population.Individual, objectiveValues [][]float64
 
 // getObjectiveRange calculates the range of values for a specific objective.
 func getObjectiveRange(objectiveValues [][]float64, m int) float64 {
-	min := math.MaxFloat64
-	max := -math.MaxFloat64
+	lo := math.MaxFloat64
+	hi := -math.MaxFloat64
 	for _, values := range objectiveValues {
-		if values[m] < min {
-			min = values[m]
+		if values[m] < lo {
+			lo = values[m]
 		}
-		if values[m] > max {
-			max = values[m]
+		if values[m] > hi {
+			hi = values[m]
 		}
 	}
-	return max - min
+	return hi - lo
 }
 
 // indexOfIndividual returns the index of an individual in a population.

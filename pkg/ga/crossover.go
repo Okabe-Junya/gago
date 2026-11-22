@@ -1,11 +1,12 @@
-// Package ga provides functionalities for implementing genetic algorithms,
-// including crossover operations for generating offspring from parent individuals.
 package ga
 
 import (
 	"math/rand"
 	"sort"
 )
+
+// minTwoPointGenomeLength is the shortest genome with two distinct interior cut points.
+const minTwoPointGenomeLength = 3
 
 // carryOverOddTail copies the final unpaired individual into the offspring when
 // the population size is odd. The pairwise crossover loops only fill indices
@@ -33,7 +34,7 @@ func carryOverOddTail(offspring, population []*Individual) {
 // - A new population of offspring generated from the input population.
 func SinglePointCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -69,7 +70,7 @@ func SinglePointCrossover(population []*Individual, crossoverRate float64, rng *
 // - A new population of offspring generated from the input population.
 func UniformCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -111,7 +112,7 @@ func UniformCrossover(population []*Individual, crossoverRate float64, rng *rand
 // - A new population of offspring generated from the input population.
 func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoints int, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -123,45 +124,14 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 			}
 
 			points := make([]int, numPoints)
-			for j := 0; j < numPoints; j++ {
+			for j := range numPoints {
 				points[j] = rng.Intn(genomeLength)
 			}
 			sort.Ints(points)
 
-			// Create children
-			child1 := &Genotype{Genome: make([]byte, genomeLength)}
-			child2 := &Genotype{Genome: make([]byte, genomeLength)}
-
-			// Start with parent1's genes for child1 and parent2's genes for child2
-			swap := false
-			start := 0
-
-			for j := 0; j < numPoints; j++ {
-				end := points[j]
-
-				if !swap {
-					copy(child1.Genome[start:end], parent1.Genome[start:end])
-					copy(child2.Genome[start:end], parent2.Genome[start:end])
-				} else {
-					copy(child1.Genome[start:end], parent2.Genome[start:end])
-					copy(child2.Genome[start:end], parent1.Genome[start:end])
-				}
-
-				swap = !swap
-				start = end
-			}
-
-			// Handle the last segment
-			if !swap {
-				copy(child1.Genome[start:], parent1.Genome[start:])
-				copy(child2.Genome[start:], parent2.Genome[start:])
-			} else {
-				copy(child1.Genome[start:], parent2.Genome[start:])
-				copy(child2.Genome[start:], parent1.Genome[start:])
-			}
-
-			offspring[2*i] = &Individual{Genotype: child1}
-			offspring[2*i+1] = &Individual{Genotype: child2}
+			c1Genome, c2Genome := multiPointChildren(parent1.Genome, parent2.Genome, points)
+			offspring[2*i] = &Individual{Genotype: &Genotype{Genome: c1Genome}}
+			offspring[2*i+1] = &Individual{Genotype: &Genotype{Genome: c2Genome}}
 		} else {
 			offspring[2*i] = population[2*i]
 			offspring[2*i+1] = population[2*i+1]
@@ -169,6 +139,27 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 	}
 	carryOverOddTail(offspring, population)
 	return offspring
+}
+
+// multiPointChildren alternates which parent each child copies from at every
+// sorted cut point, starting with child1 taking parent1's genes.
+func multiPointChildren(p1, p2 []byte, points []int) ([]byte, []byte) {
+	child1 := make([]byte, len(p1))
+	child2 := make([]byte, len(p1))
+	src1, src2 := p1, p2
+	start := 0
+
+	for _, end := range points {
+		copy(child1[start:end], src1[start:end])
+		copy(child2[start:end], src2[start:end])
+		src1, src2 = src2, src1
+		start = end
+	}
+
+	copy(child1[start:], src1[start:])
+	copy(child2[start:], src2[start:])
+
+	return child1, child2
 }
 
 // TwoPointCrossover performs a two-point crossover on the given population.
@@ -184,12 +175,12 @@ func MultiPointCrossover(population []*Individual, crossoverRate float64, numPoi
 // - A new population of offspring generated from the input population.
 func TwoPointCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
 			genomeLength := len(parent1.Genome)
-			if genomeLength < 3 {
+			if genomeLength < minTwoPointGenomeLength {
 				// Fall back to single-point semantics for very short genomes.
 				offspring[2*i] = population[2*i]
 				offspring[2*i+1] = population[2*i+1]
@@ -235,7 +226,7 @@ func TwoPointCrossover(population []*Individual, crossoverRate float64, rng *ran
 func OrderBasedCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -254,10 +245,14 @@ func OrderBasedCrossover(population []*Individual, crossoverRate float64, rng *r
 			// Use the half-open interval [a, b+1) so the segment is non-empty.
 			end := b + 1
 
-			child1 := &Genotype{Genome: orderCrossoverChild(parent1.Genome, parent2.Genome, a, end), GenomeType: parent1.GenomeType}
-			child2 := &Genotype{Genome: orderCrossoverChild(parent2.Genome, parent1.Genome, a, end), GenomeType: parent2.GenomeType}
-			offspring[2*i] = &Individual{Genotype: child1}
-			offspring[2*i+1] = &Individual{Genotype: child2}
+			offspring[2*i] = &Individual{Genotype: &Genotype{
+				Genome:     orderCrossoverChild(parent1.Genome, parent2.Genome, a, end),
+				GenomeType: parent1.GenomeType,
+			}}
+			offspring[2*i+1] = &Individual{Genotype: &Genotype{
+				Genome:     orderCrossoverChild(parent2.Genome, parent1.Genome, a, end),
+				GenomeType: parent2.GenomeType,
+			}}
 		} else {
 			offspring[2*i] = population[2*i]
 			offspring[2*i+1] = population[2*i+1]
@@ -281,7 +276,7 @@ func orderCrossoverChild(p1, p2 []byte, start, end int) []byte {
 		used[p1[i]] = true
 	}
 	write := end % n
-	for offset := 0; offset < n; offset++ {
+	for offset := range n {
 		gene := p2[(end+offset)%n]
 		if used[gene] {
 			continue
@@ -317,7 +312,7 @@ func orderCrossoverChild(p1, p2 []byte, start, end int) []byte {
 func PMXCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -361,7 +356,7 @@ func pmxChild(p1, p2 []byte, a, b int) []byte {
 		inSegment[p1[i]] = true
 		mapping[p1[i]] = p2[i]
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i >= a && i <= b {
 			continue
 		}
@@ -397,7 +392,7 @@ func pmxChild(p1, p2 []byte, a, b int) []byte {
 func CycleCrossover(population []*Individual, crossoverRate float64, rng *rand.Rand) []*Individual {
 	offspring := make([]*Individual, len(population))
 
-	for i := 0; i < len(population)/2; i++ {
+	for i := range len(population) / 2 {
 		if rng.Float64() < crossoverRate {
 			parent1 := population[2*i].Genotype
 			parent2 := population[2*i+1].Genotype
@@ -422,17 +417,17 @@ func CycleCrossover(population []*Individual, crossoverRate float64, rng *rand.R
 	return offspring
 }
 
-func cycleCrossoverChildren(p1, p2 []byte) (child1, child2 []byte) {
+func cycleCrossoverChildren(p1, p2 []byte) ([]byte, []byte) {
 	n := len(p1)
-	child1 = make([]byte, n)
-	child2 = make([]byte, n)
+	child1 := make([]byte, n)
+	child2 := make([]byte, n)
 	visited := make([]bool, n)
 	indexInP2 := make(map[byte]int, n)
 	for i, v := range p2 {
 		indexInP2[v] = i
 	}
 	cycle := 0
-	for start := 0; start < n; start++ {
+	for start := range n {
 		if visited[start] {
 			continue
 		}
